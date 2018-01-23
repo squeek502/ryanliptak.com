@@ -25,6 +25,7 @@ for file in lfs.dir("themes/styles") do
 		table.insert(css, contents)
 	end
 end
+fsutil.mkdir("public/styles")
 fsutil.write("public/styles/style.css", table.concat(css, "\n"))
 fsutil.copy("static", "public")
 
