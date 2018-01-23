@@ -1,11 +1,11 @@
 ryanliptak.com
---------------
+==============
 
 The source files for [ryanliptak.com](https://ryanliptak.com/).
 
 Uses a modified version of the [Motyl static site generator](https://github.com/fcambus/motyl) (see [Changes to Motyl](#changes-to-motyl)).
 
-# Building
+## Building
 
 You'll need to install the following Lua modules and make them available to Lua:
 - [luafilesystem](https://github.com/keplerproject/luafilesystem)
@@ -22,7 +22,7 @@ lua build.lua
 
 will build everything and put it in the `public/` directory.
 
-# Development
+## Development
 
 For testing, you can use [one of these](https://gist.github.com/willurd/5720255) to serve the `public/` directory.
 
@@ -34,7 +34,7 @@ lua watch.lua
 
 (you'll need to have the `sleep` module installed, see above)
 
-# Changes to Motyl
+## Changes to Motyl
 
 The provided [motyl.lua](lua/motyl.lua) has been customized in the following ways:
 - Swapped `lunamark` out for `discount`
