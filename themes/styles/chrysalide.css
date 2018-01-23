@@ -1,0 +1,89 @@
+/*****************************************************************************/
+/*                                                                           */
+/* Chrysalide                                                                */
+/* Copyright (c) 2016-2017, Frederic Cambus                                  */
+/* https://github.com/fcambus/chrysalide                                     */
+/*                                                                           */
+/* Created: 2016-02-16                                                       */
+/* Last Updated: 2017-08-07                                                  */
+/*                                                                           */
+/* Chrysalide is released under the BSD 2-Clause license.                    */
+/* See LICENSE file for details.                                             */
+/*                                                                           */
+/*****************************************************************************/
+
+@font-face {
+	font-family: Tahoma, Geneva, sans-serif;
+	font-weight: 400;
+	font-style: normal;
+}
+
+body {
+	background: #fff;
+	color: #333;
+	font-family: Tahoma, Geneva, sans-serif;
+	*font-size: 1em;
+	line-height: 1.6;
+	margin: 0;
+	padding: 0;
+}
+
+footer {
+	color: #aaa;
+	margin: 16px 0;
+}
+
+h1, h3 {
+	margin-bottom: 0px;
+}
+
+header, #container {
+	max-width: 1024px;
+	margin: auto;
+	padding: 0 10px;
+}
+
+header h2 {
+	font-size: 48px;
+	line-height: 48px;
+	margin: 16px 0 0;
+}
+
+hr {
+	border-top: 1px solid #eee;
+	margin: 16px 0;
+}
+
+p {
+	text-align: justify;
+}
+
+img {
+	display: inline-block;
+	height: auto;
+	max-width: 100%;
+	margin: auto;
+}
+
+p a {
+	border-bottom: 2px solid pink;
+}
+
+time {
+	color: #aaa;
+}
+
+.youtube {
+	position: relative;
+	padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+}
+
+.youtube iframe {
+	position: absolute;
+	width: 100%!important;
+	height: 100%!important;
+}
+
+#powered {
+	float: right;
+}

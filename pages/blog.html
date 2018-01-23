@@ -1,0 +1,10 @@
+<p>There is no overall focus of this blog; it is just a random collection of things</p>
+{{#site.posts}}
+<div class="blog">
+<h3><a href="/{{{url}}}">{{{title}}}</a></h3>
+<time>{{date}}</time>
+{{#categoryDisplay}}
+ &middot; <a href="/categories/{{{url}}}">{{category}}</a>
+{{/categoryDisplay}}
+</div>
+{{/site.posts}}

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="{{{site.lang}}}">
+<head>
+	<meta charset="utf-8">
+	<title>{{{page.title}}} - {{{site.name}}}</title>
+
+	<meta name="description" content="{{{page.description}}}" />
+	<meta name="keywords" content="{{{page.keywords}}}" />
+	<meta name="author" content="{{{site.author}}}" />
+	<meta name="robots" content="index, follow, archive" />
+
+	<meta name="generator" content="{{{version}}}" />
+
+	<link rel="canonical" href="{{{site.url}}}{{{page.url}}}" />
+
+	<link rel="stylesheet" href="/styles/style.css" type="text/css" />
+
+	<link href="/atom.xml" type="application/atom+xml" rel="alternate" title="ATOM Feed" />
+</head>
+
+<body>
+	<header>
+		<ul class="header-menu">
+		{{#site.pages}}
+			<li><a href="{{{url}}}">{{{title}}}</a></li>
+		{{/site.pages}}
+		</ul>
+		<a href="{{{site.rss.url}}}" style="float:right;">{{{site.rss.title}}}</a>
+	</header>
+
+	<hr />
+
+	<div id="container">
