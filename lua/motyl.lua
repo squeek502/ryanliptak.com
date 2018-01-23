@@ -48,8 +48,6 @@ end
 
 -- Load and process Markdown file
 local function loadMD(path)
-	--local writer = lunamark.writer.html.new()
-	--local parse = lunamark.reader.markdown.new(writer, { fenced_code_blocks = true })
 	return assert(discount.compile(readFile(path), "fencedcode")).body
 end
 
