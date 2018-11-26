@@ -131,3 +131,14 @@ pre {
   border-radius: .3em;
   white-space: normal;
 }
+
+.clear:after {clear:both;}
+.clear:before, .clear:after {content:"";display:table;}
+
+@media print {
+  footer, header { display: none !important; }
+  .no-print { display: none !important; }
+}
+@media only screen and (max-width: 600px) {
+  .hide-on-small { display: none !important; }
+}
