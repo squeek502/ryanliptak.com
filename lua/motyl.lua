@@ -157,6 +157,7 @@ data.page = {}
 lfs.mkdir("public/categories")
 
 for category in pairs(data.site.categories) do
+	assert(data.site.categoryMap[category], "missing category in motyl.conf: "..category)
 	local categoryURL = data.site.categoryMap[category] .. "/"
 
 	table.sort(data.site.categories[category], sortDates)
