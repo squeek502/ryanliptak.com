@@ -2,7 +2,7 @@ In Quake and derivative engines (like Half-Life 1 & 2), it is possible to slide 
 
 ![](https://picsum.photos/500/300)
 
-The obvious assumption would be that this is an intentional feature that uses the slope of the surface to determine if it can be slid along, but that is not the case. In fact, in the same way that bunnyhopping was likely an unintentional quirk of the 'air acceleration' code, rampsliding was likely an unintentional quirk of the 'categorize position' code.
+The obvious assumption would be that this is an intentional feature that uses things like the slope of the surface and the player's velocity to determine when a player is rampsliding, but that is not the case. In fact, in the same way that bunnyhopping was likely an unintentional quirk of the 'air acceleration' code, rampsliding was likely an unintentional quirk of the 'categorize position' code.
 
 In [Quake's `PM_CatagorizePosition` \[sic\] function, we see the following code](https://github.com/id-Software/Quake/blob/bf4ac424ce754894ac8f1dae6a3981954bc9852d/QW/client/pmove.c#L587-L590):
 
@@ -17,7 +17,7 @@ That is, if the player is moving up (velocity index 2 is the vertical component)
 
 ![](https://picsum.photos/500/300)
 
-Similar code exists [in the Half-Life (GoldSrc) engine](https://github.com/ValveSoftware/halflife/blob/master/pm_shared/pm_shared.c#L1563-L1566):
+Similar code exists [in the Half-Life (GoldSrc) engine](https://github.com/ValveSoftware/halflife/blob/c76dd531a79a176eef7cdbca5a80811123afbbe2/pm_shared/pm_shared.c#L1563-L1566):
 
 ```c
 if (pmove->velocity[2] > 180)   // Shooting up really fast.  Definitely not on ground.
@@ -26,7 +26,7 @@ if (pmove->velocity[2] > 180)   // Shooting up really fast.  Definitely not on g
 }
 ```
 
-and [in the Half-Life 2 (Source) engine](https://github.com/ValveSoftware/source-sdk-2013/blob/master/mp/src/game/shared/gamemovement.cpp#L3832-L3837):
+and [in the Half-Life 2 (Source) engine](https://github.com/ValveSoftware/source-sdk-2013/blob/0d8dceea4310fde5706b3ce1c70609d72a38efdf/mp/src/game/shared/gamemovement.cpp#L3832-L3837):
 
 ```c++
 // Was on ground, but now suddenly am not
