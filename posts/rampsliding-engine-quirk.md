@@ -20,12 +20,12 @@ if (pmove.velocity[2] > 180)
 
 That is, if the player is moving up (velocity index 2 is the vertical component) at greater than 180 units, then the player is automatically considered in the air, and this overrides all other 'on ground' checks. With this, if a player is colliding with a ramp such that their velocity along the ramp has a large enough vertical component, then they are considered in the air, and thus ground friction is simply not applied (specifically, `PM_AirMove` is called instead of `PM_GroundMove`).
 
-This has two emergent conditions for rampsliding:
+This creates two emergent conditions for rampsliding:
 
 - The ramp can't be too shallow
 - The player can't be going too slow
 
-And those two conditions also interact with eachother (e.g. you can slide a shallower ramp when you're going faster)
+And these two conditions also interact with eachother (e.g. you can slide a shallower ramp when you're going faster).
 
 <div style="text-align: center;">
 <img src="/images/rampsliding-engine-quirk/rampsliding-velocity.png" style="margin-left:auto; margin-right:auto; display: block;" />

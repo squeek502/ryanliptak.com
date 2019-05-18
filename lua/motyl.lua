@@ -6,8 +6,7 @@
 # Copyright (c) 2016-2018, Frederic Cambus                                    #
 # https://github.com/fcambus/motyl                                            #
 #                                                                             #
-# Created: 2016-02-16                                                         #
-# Last Updated: 2018-01-08                                                    #
+# Modified by Ryan Liptak                                                     #
 #                                                                             #
 # Motyl is released under the BSD 2-Clause license.                           #
 # See LICENSE file for details.                                               #
@@ -98,6 +97,9 @@ local function render(directory)
         data.page.content = lustache:render(html, data)
         if data.page.url == nil then
           data.page.url = path .. "/"
+          if directory == "posts" then
+            data.page.url = "blog/" .. data.page.url
+          end
         end
 
         status("Rendering " .. data.page.url)
