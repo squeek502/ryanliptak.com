@@ -58,4 +58,8 @@ It seems like this code is mostly a catch-all fix to resolve any instance where 
 
 ## Why do you still slow down while rampsliding?
 
+Stuff about `ClipVelocity` here. [Experimental adjustable rampslide 'friction' implementation from the FF beta way back when for reference](https://github.com/fortressforever/fortressforever/blob/dev/svn/game_shared/gamemovement.cpp#L2742-L2769).
 
+## What about surfing (like in Counter-Strike surf maps)?
+
+Surfing comes from a separate but related mechanism. If a surface is steep enough, then the player is *always* considered 'in the air' when colliding with it.
