@@ -15,10 +15,10 @@
 ]]--
 
 local lfs = require "lfs"
+local fsutil = require "fsutil"
 local yaml = require "yaml"
 -- don't load dates as numbers
 yaml.configure("load_numeric_scalars", false)
---local lunamark = require "lunamark"
 local discount = require "discount"
 local lustache = require "lustache"
 
@@ -123,7 +123,7 @@ local function render(directory)
             end
 
             table.insert(data.site.categories[category], data.page)
-            table.insert(data.page.categoryDisplay, { category = category, url = data.site.categoryMap[category]})
+            table.insert(data.page.categoryDisplay, { category = category, url = "blog/categories/" .. data.site.categoryMap[category]})
           end
 
           if data.page.featured then
@@ -131,7 +131,7 @@ local function render(directory)
           end
         end
 
-        lfs.mkdir("public/" .. data.page.url)
+        fsutil.mkdir("public/" .. data.page.url)
         writeFile("public/" .. data.page.url .. "index.html", renderTemplate(templates[directory], data, templates))
 
         data.page = {}
@@ -141,7 +141,7 @@ local function render(directory)
 end
 
 -- Render posts
-lfs.mkdir("public")
+fsutil.mkdir("public")
 render("posts")
 
 -- Sort post archives
@@ -160,7 +160,7 @@ status("Rendering atom.xml")
 data.page = {}
 
 -- Categories
-lfs.mkdir("public/categories")
+fsutil.mkdir("public/categories")
 
 for category in pairs(data.site.categories) do
   assert(data.site.categoryMap[category], "missing category in motyl.conf: "..category)
@@ -169,10 +169,10 @@ for category in pairs(data.site.categories) do
   table.sort(data.site.categories[category], sortDates)
 
   data.page.title = category
-  data.page.url = "categories/" .. categoryURL
+  data.page.url = "blog/categories/" .. categoryURL
   data.site.posts = data.site.categories[category]
 
-  lfs.mkdir("public/categories/" .. categoryURL)
-  writeFile("public/categories/" .. categoryURL .. "index.html", renderTemplate(templates.categories, data, templates))
+  fsutil.mkdir("public/blog/categories/" .. categoryURL)
+  writeFile("public/blog/categories/" .. categoryURL .. "index.html", renderTemplate(templates.categories, data, templates))
   status("Rendering " .. categoryURL)
 end
