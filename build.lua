@@ -4,11 +4,11 @@ local fsutil = require('fsutil')
 local lfs = require('lfs')
 
 local function motyl()
-	-- lustache saves state, need to force a reload
-	package.loaded["lustache"] = nil
-	-- force a re-load
-	package.loaded["motyl"] = nil
-	require('motyl')
+  -- lustache saves state, need to force a reload
+  package.loaded["lustache"] = nil
+  -- force a re-load
+  package.loaded["motyl"] = nil
+  require('motyl')
 end
 
 print("Running motyl")
@@ -20,10 +20,10 @@ fsutil.copy("themes/scripts", "public/scripts")
 print("Concatting stylesheets")
 local css = {}
 for file in lfs.dir("themes/styles") do
-	if file ~= "." and file ~= ".." then
-		local contents = fsutil.read("themes/styles/" .. file)
-		table.insert(css, contents)
-	end
+  if file ~= "." and file ~= ".." then
+    local contents = fsutil.read("themes/styles/" .. file)
+    table.insert(css, contents)
+  end
 end
 fsutil.mkdir("public/styles")
 fsutil.write("public/styles/style.css", table.concat(css, "\n"))
