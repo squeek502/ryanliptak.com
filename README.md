@@ -3,7 +3,7 @@ ryanliptak.com
 
 The source files for [ryanliptak.com](https://ryanliptak.com/).
 
-Uses a modified version of the [Motyl static site generator](https://github.com/fcambus/motyl) (see [Changes to Motyl](#changes-to-motyl)).
+Uses a modified version of the [abandoned Lua version of the Motyl static site generator](https://github.com/fcambus/motyl/tree/e23b601e57c3e2649ae386c2d40d86c0e6ea0fe4) (see [Changes to Motyl](#changes-to-motyl)).
 
 ## Building
 
