@@ -21,9 +21,13 @@ print("Concatting stylesheets")
 local css = {}
 for file in lfs.dir("themes/styles") do
   if file ~= "." and file ~= ".." then
-    local contents = fsutil.read("themes/styles/" .. file)
-    table.insert(css, contents)
+    table.insert(css, "themes/styles/" .. file)
   end
+end
+table.sort(css)
+for i,filename in ipairs(css) do
+  print("  " .. filename)
+  css[i] = fsutil.read(filename)
 end
 fsutil.mkdir("public/styles")
 fsutil.write("public/styles/style.css", table.concat(css, "\n"))
