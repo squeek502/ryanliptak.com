@@ -38,7 +38,7 @@ And these two conditions also interact with eachother (e.g. you can slide a shal
 		}
 		#velocity-slope {
 			position: absolute;
-			bottom: 50px;
+			bottom: 30px;
 			right: 50px;
 			width: 400px;
 			height: 5px;
@@ -48,7 +48,7 @@ And these two conditions also interact with eachother (e.g. you can slide a shal
 		}
 		#velocity-slope-angle {
 			position: absolute;
-			bottom: 55px;
+			bottom: 35px;
 			left: 60px;
 		}
 		#velocity-slope-angle-circle {
@@ -56,7 +56,7 @@ And these two conditions also interact with eachother (e.g. you can slide a shal
 			overflow: hidden;
 			padding: 0; margin: 0;
 			width: 400px; height: 400px;
-			right: 50px; bottom: 50px;
+			right: 50px; bottom: 30px;
 		}
 		#velocity-slope-angle-circle > div {
 			position: absolute;
@@ -70,7 +70,7 @@ And these two conditions also interact with eachother (e.g. you can slide a shal
 		}
 		#velocity-ground {
 			position: absolute;
-			bottom: 50px;
+			bottom: 30px;
 			right: 50px;
 			width: 400px;
 			height: 1px;
@@ -78,7 +78,7 @@ And these two conditions also interact with eachother (e.g. you can slide a shal
 		}
 		#velocity-arrow {
 			position: absolute;
-			bottom: 50px;
+			bottom: 30px;
 			right: 150px;
 			width: 200px;
 			height: 3px;
@@ -118,7 +118,7 @@ And these two conditions also interact with eachother (e.g. you can slide a shal
 			border-top: 1px dashed;
 			border-color: rgba(0,0,0,.5);
 			z-index: 4;
-			left: 201.767px; bottom: 117.317px;
+			left: 201.767px; bottom: 97.317px;
 			width: 174.367px; height: 103.183px;
 		}
 		#velocity-x {
@@ -135,6 +135,11 @@ And these two conditions also interact with eachother (e.g. you can slide a shal
 			top: 50%;
 			transform: translate(0, -50%);
 			text-align: left;
+		}
+		#velocity-status {
+			position:absolute;
+			left: 0px; right: 0px; top: 1em;
+			text-align: center;
 		}
 	</style>
 	<script>
@@ -179,8 +184,10 @@ And these two conditions also interact with eachother (e.g. you can slide a shal
 					var rampsliding = y > 180
 					if (rampsliding) {
 						arrow.classList.add('rampsliding');
+						document.getElementById('velocity-status').innerHTML = "player state: 'in air'";
 					} else {
 						arrow.classList.remove('rampsliding');
+						document.getElementById('velocity-status').innerHTML = "player state: 'on ground'";
 					}
 				});
 			}
@@ -203,6 +210,7 @@ And these two conditions also interact with eachother (e.g. you can slide a shal
 			<div id="velocity-x">606</div>
 			<div id="velocity-y">350</div>
 		</div>
+		<div id="velocity-status">player state: 'in air'</div>
 	</div>
 	<i style="background-color: rgba(0,0,0, .1); margin:0; padding: .25em;">Mouse over the diagram to interact with it</i>
 </div>
