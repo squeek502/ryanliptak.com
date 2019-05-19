@@ -174,5 +174,5 @@ for category in pairs(data.site.categories) do
 
   fsutil.mkdir("public/blog/categories/" .. categoryURL)
   writeFile("public/blog/categories/" .. categoryURL .. "index.html", renderTemplate(templates.categories, data, templates))
-  status("Rendering " .. categoryURL)
+  status("Rendering " .. data.page.url)
 end
