@@ -28,8 +28,183 @@ This creates two emergent conditions for rampsliding:
 And these two conditions also interact with eachother (e.g. you can slide a shallower ramp when you're going faster).
 
 <div style="text-align: center;">
-<img src="/images/rampsliding-engine-quirk/rampsliding-velocity.png" style="margin-left:auto; margin-right:auto; display: block;" />
-<i style="background-color: rgba(0,0,0, .1); margin:0; padding: .25em;">To be replaced with an interactive version?</i>
+	<style scoped>
+		#velocity-example {
+			margin-right: auto; margin-left: auto; display: block;
+			width: 500px; height: 400px;
+			position: relative;
+			background-color: #eee;
+			overflow: hidden;
+		}
+		#velocity-slope {
+			position: absolute;
+			bottom: 50px;
+			right: 50px;
+			width: 400px;
+			height: 5px;
+			background-color: black;
+			transform-origin: 100% 100%;
+			transform: rotate(30deg);
+		}
+		#velocity-slope-angle {
+			position: absolute;
+			bottom: 55px;
+			left: 60px;
+		}
+		#velocity-slope-angle-circle {
+			position: absolute;
+			overflow: hidden;
+			padding: 0; margin: 0;
+			width: 400px; height: 400px;
+			right: 50px; bottom: 50px;
+		}
+		#velocity-slope-angle-circle > div {
+			position: absolute;
+			border: dashed 1px rgba(0,0,0,0.5);
+			border-right: 0; border-bottom: 0;
+			width: 399px; height: 399px;
+			right: 0px; bottom: 0px;
+			border-radius: 100% 0 0 0;
+			transform-origin: 100% 100%;
+			transform: rotate(-60deg);
+		}
+		#velocity-ground {
+			position: absolute;
+			bottom: 50px;
+			right: 50px;
+			width: 400px;
+			height: 1px;
+			background-color: rgba(0,0,0,0.5);
+		}
+		#velocity-arrow {
+			position: absolute;
+			bottom: 50px;
+			right: 150px;
+			width: 200px;
+			height: 3px;
+			transform-origin: 150% 5px;
+			transform: rotate(30deg) translate(0px, -20px);
+			background-color: red;
+			z-index: 5;
+		}
+		#velocity-arrow.rampsliding {
+			background-color: green;
+		}
+		#velocity-arrow::after { 
+	    content: '';
+	    width: 0; 
+	    height: 0; 
+	    border-top: 5px solid transparent;
+	    border-bottom: 5px solid transparent;
+	    border-right: 20px solid red;
+	    position: absolute;
+	    left: 0px;
+	    top: -4px;
+			z-index: 5;
+		}
+		#velocity-arrow.rampsliding::after {
+			border-right-color: green;
+		}
+		#velocity-magnitude {
+			position: absolute;
+			left: 50%;
+			bottom: 0em;
+			font-size: 90%;
+			transform: translate(-50%, 0);
+		}
+		#velocity-components {
+			position: absolute;
+			border-right: 1px dashed;
+			border-top: 1px dashed;
+			border-color: rgba(0,0,0,.5);
+			z-index: 4;
+			left: 201.767px; bottom: 117.317px;
+			width: 174.367px; height: 103.183px;
+		}
+		#velocity-x {
+			position:absolute;
+			text-align: center;
+			top: -2em;
+			left: 50%;
+			transform: translate(-50%, 0);
+		}
+		#velocity-y {
+			position:absolute;
+			left: 100%;
+			margin-left: 1em;
+			top: 50%;
+			transform: translate(0, -50%);
+			text-align: left;
+		}
+	</style>
+	<script>
+		(function() {
+			var ready = function() {
+				var container = document.getElementById('velocity-example');
+				var slope = document.getElementById('velocity-slope');
+				var slopeAngle = document.getElementById('velocity-slope-angle');
+				var slopeAngleCircle = document.getElementById('velocity-slope-angle-circle').firstElementChild;
+				var arrow = document.getElementById('velocity-arrow');
+				var velocityComponents = document.getElementById('velocity-components');
+				var magnitude = 700;
+
+				container.addEventListener('mousemove', e => {
+					var slopeRect = slope.getBoundingClientRect();
+					var anchorX = window.scrollX + slopeRect.right;
+					var anchorY = window.scrollY + slopeRect.bottom;
+					var radians = Math.atan2(-(e.pageY - anchorY), -(e.pageX - anchorX));
+					var degrees = radians * 180 / Math.PI;
+					degrees = Math.max(5, Math.min(degrees, 50));
+					radians = degrees / 180 * Math.PI;
+					
+					slope.style.transform = 'rotate(' + degrees + 'deg)';
+					slopeAngle.innerHTML = Math.round(degrees) + "&deg;"; 
+					var circleAngle = -(90 - degrees);
+					slopeAngleCircle.style.transform = 'rotate(' + circleAngle + 'deg)';
+
+					arrow.style.transform = 'rotate(' + degrees + 'deg) translate(0px, -20px)';
+					arrowBounds = arrow.getBoundingClientRect();
+					containerBounds = container.getBoundingClientRect();
+					velocityComponents.style.left = (arrowBounds.left-containerBounds.left)+'px';
+					velocityComponents.style.bottom = Math.abs(arrowBounds.bottom-containerBounds.bottom)+'px';
+					velocityComponents.style.width = (arrowBounds.right-arrowBounds.left)+'px';
+					velocityComponents.style.height = Math.abs(arrowBounds.top-arrowBounds.bottom)+'px';
+
+					var x = Math.cos(radians) * magnitude;
+					var y = Math.sin(radians) * magnitude;
+					document.getElementById('velocity-x').innerHTML = Math.round(x);
+					document.getElementById('velocity-y').innerHTML = Math.round(y);
+					document.getElementById('velocity-magnitude').innerHTML = magnitude;
+
+					var rampsliding = y > 180
+					if (rampsliding) {
+						arrow.classList.add('rampsliding');
+					} else {
+						arrow.classList.remove('rampsliding');
+					}
+				});
+			}
+			if (document.readyState == 'complete' || document.readyState == 'loaded') {
+				ready();
+			} else {
+				window.addEventListener('DOMContentLoaded', ready);
+			}
+		})();
+	</script>
+	<div id="velocity-example">
+		<div id="velocity-slope"></div>
+		<div id="velocity-ground"></div>
+		<div id="velocity-slope-angle">30&deg;</div>
+		<div id="velocity-slope-angle-circle"><div></div></div>
+		<div id="velocity-arrow" class="rampsliding">
+			<div id="velocity-magnitude">700</div>
+		</div>
+		<div id="velocity-components">
+			<div id="velocity-x">606</div>
+			<div id="velocity-y">350</div>
+		</div>
+	</div>
+	<i style="background-color: rgba(0,0,0, .1); margin:0; padding: .25em;">Mouse over the diagram to interact with it</i>
 </div>
 
 Similar code exists [in the Half-Life (GoldSrc) engine](https://github.com/ValveSoftware/halflife/blob/c76dd531a79a176eef7cdbca5a80811123afbbe2/pm_shared/pm_shared.c#L1563-L1566):
