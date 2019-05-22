@@ -1,4 +1,4 @@
-In Quake and derivative engines (like Half-Life 1 & 2), it is possible to slide up sloped surfaces without losing much speed. This is a major gameplay component of games like QuakeWorld Team Fortress, Team Fortress Classic, and Fortress Forever, where maintaining momentum from large speed bursts is fundamental.
+In Quake and derivative engines (like Half-Life 1 & 2), it is possible to slide up sloped surfaces without losing much speed. This is a major gameplay component of games like QuakeWorld Team Fortress, Team Fortress Classic, and [Fortress Forever](http://www.fortress-forever.com), where maintaining momentum from large speed bursts is fundamental.
 
 <div style="text-align: center;">
 <video autoplay loop muted style="margin-left:auto; margin-right:auto; display: block;">
@@ -194,7 +194,7 @@ It seems like this code is mostly a catch-all fix to resolve any instance where 
 
 ## So then why do you slow down while rampsliding?
 
-When a player collides with a surface, the resulting velocity is determined using a function called [`PM_ClipVelocity`](https://github.com/id-Software/Quake/blob/bf4ac424ce754894ac8f1dae6a3981954bc9852d/QW/client/pmove.c#L72-L95). The following is a simplified version of the `ClipVelocity` logic:
+When a player collides with a surface, the resulting velocity is determined using [a function called `PM_ClipVelocity`](https://github.com/id-Software/Quake/blob/bf4ac424ce754894ac8f1dae6a3981954bc9852d/QW/client/pmove.c#L72-L95). The following is a simplified version of the `ClipVelocity` logic:
 
 ```language-c
 float backoff = DotProduct(velocity, surfaceNormal);
@@ -206,7 +206,13 @@ for (i=0; i<3; i++)
 }
 ```
 
-Stuff about `ClipVelocity` here. [Experimental adjustable rampslide 'friction' implementation from the FF beta way back when for reference](https://github.com/fortressforever/fortressforever/blob/dev/svn/game_shared/gamemovement.cpp#L2742-L2769).
+Its job is to make the velocity parallel to the surface that is being collided with. Once velocity is parallel to the surface, running the velocity through the function again will have no effect. However, this is where gravity comes in to the picture: because you are considered 'in the air' while rampsliding, gravity is applied every frame. This creates a loop that goes like this:
+
+- Try to move along a surface
+- `ClipVelocity` to make velocity parallel to the surface
+- Move parallel along the surface using the adjusted velocity
+- Apply gravity, making the velocity no longer parallel to the surface
+- Repeat
 
 <div style="text-align: center;">
 	<style scoped>
@@ -248,6 +254,7 @@ Stuff about `ClipVelocity` here. [Experimental adjustable rampslide 'friction' i
 			top: -2em;
 			left: 50%;
 			transform: translate(-50%, 0);
+			color: rgba(0,0,0,.5);
 		}
 		.rampsliding-diagram .normal-y {
 			position:absolute;
@@ -256,14 +263,74 @@ Stuff about `ClipVelocity` here. [Experimental adjustable rampslide 'friction' i
 			top: 50%;
 			transform: translate(0, -50%);
 			text-align: right;
+			color: rgba(0,0,0,.5);
 		}
-		.rampsliding-diagram .controls.step {
+		.rampsliding-diagram .controls {
 			padding: 0.5em; margin: 0.5em;
 			cursor: pointer;
 			background-color: rgba(0,0,0,.1);
 			display: inline-block;
+			-webkit-touch-callout: none;
+			-webkit-user-select: none;
+			-khtml-user-select: none;
+			-moz-user-select: none;
+			-ms-user-select: none;
+			user-select: none;
+		}
+		.rampsliding-diagram .controls.step {
 			position: absolute;
 			left: 0; top: 0;
+		}
+		.rampsliding-diagram .controls.grav {
+			position: absolute;
+			left: 0; top: 45px;
+		}
+		.rampsliding-diagram .steps {
+			position: absolute;
+			right: 0; top: 0;
+		}
+		.rampsliding-diagram .velocity-arrow-container {
+			position: absolute;
+			bottom: 30px;
+			right: 50px;
+			width: 200px;
+			transform-origin: 100% 100%;
+			transform: rotate(30deg) translate(-50px, -20px);
+			z-index: 5;
+		}
+		#clipvelocity-example.rampsliding-diagram .velocity-arrow {
+			position: absolute;
+			bottom: 0px;
+			right: 0px;
+			width: 200px;
+			height: 3px;
+			transform-origin: 100% 100%;
+			transform: none;
+		}
+		.rampsliding-diagram .steps {
+			list-style: none;
+			text-align: left;
+			margin: 1em;
+			padding: 0;
+		}
+		.rampsliding-diagram .steps li {
+			background-color: rgba(0,0,0,.1);
+			padding: .1em .5em;
+			margin-bottom: .25em;
+		}
+		.rampsliding-diagram .steps li.current {
+			background-color: rgba(0,255,0,.1);
+		}
+		.rampsliding-diagram .steps li.current::before {
+			content: '>';
+			right: 100%;
+			margin-right: 3px;
+			position: absolute;
+			font-weight: bold;
+		}
+		#clipvelocity-example.rampsliding-diagram .velocity-components {
+			left: 243.5px; bottom: 72.3167px;
+			width: 174.7px; height: 102.6px;
 		}
 	</style>
 	<div id="clipvelocity-example" class="rampsliding-diagram rampsliding">
@@ -276,21 +343,29 @@ Stuff about `ClipVelocity` here. [Experimental adjustable rampslide 'friction' i
 			<div class="normal-x">0.50</div>
 			<div class="normal-y">0.87</div>
 		</div>
-		<div class="velocity-arrow">
-			<div class="velocity-magnitude">700</div>
+		<div class="velocity-arrow-container">
+			<div class="velocity-arrow">
+				<div class="velocity-magnitude">700</div>
+			</div>
 		</div>
 		<div class="velocity-components">
 			<div class="velocity-x">606</div>
 			<div class="velocity-y">350</div>
 		</div>
-		<div class="controls step">Step</div>
-		<div class="info">
+		<div class="controls step" style="display:none">Step</div>
+		<div class="controls grav" style="display:none">Gravity</div>
+		<ul class="steps">
+			<li class="clip-velocity current">Clip Velocity</li>
+			<li class="move">Move</li>
+			<li class="gravity">Apply Gravity</li>
+		</ul>
+		<div class="info" style="display:none">
 			<div>Backoff: <span class="backoff"></span></div>
 			<div>Change: <span class="change"></span></div>
 			<div>Prev Velocity: <span class="prev-velocity"></span></div>
 		</div>
 	</div>
-	<i style="background-color: rgba(0,0,0, .1); margin:0; padding: .25em;">Mouse over the diagram to interact with it</i>
+	<i style="background-color: rgba(0,0,0, .1); margin:0; padding: .25em;">All the speed loss is due to gravity</i>
 </div>
 
 ## What about surfing (like in [Counter-Strike surf maps](https://www.youtube.com/watch?v=hMsPf8eSW3k))?
@@ -475,8 +550,87 @@ Surfing comes from a separate but related mechanism. If a surface is steep enoug
 			startAnimation(thirtyToTen);
 		};
 
+		class ClipVelocityDiagram {
+
+			constructor(root, onupdate) {
+				this.root = root;
+				this.onupdate = onupdate;
+				this.slope = root.querySelector('.slope');
+				this.slopeAngle = root.querySelector('.slope-angle');
+				this.slopeAngleCircle = root.querySelector('.slope-angle-circle').firstElementChild;
+				this.velocityArrowContainer = root.querySelector('.velocity-arrow-container');
+				this.velocityArrow = root.querySelector('.velocity-arrow');
+				this.velocityComponents = root.querySelector('.velocity-components');
+				this.velocityX = root.querySelector('.velocity-x');
+				this.velocityY = root.querySelector('.velocity-y');
+				this.velocityMagnitude = root.querySelector('.velocity-magnitude');
+				this.status = root.querySelector('.status');
+				this.angle = 30;
+				this.velocity = this.getVelocity(700);
+				this.offset = 50;
+			}
+
+			getVelocity(magnitude) {
+				let radians = this.angle / 180 * Math.PI;
+				let x = Math.cos(radians) * magnitude;
+				let y = Math.sin(radians) * magnitude;
+				// reverse x so that we're moving left
+				return new Vec2d(-x, y);
+			}
+
+			getSurfaceNormal() {
+				let radians = this.angle / 180 * Math.PI;
+				let x = Math.sin(radians);
+				let y = Math.cos(radians);
+				return new Vec2d(x, y).normalize();
+			}
+
+			update() {
+				let magnitude = this.velocity.length();
+				let velocityAngle = 180 - Math.atan2(this.velocity.y, this.velocity.x) * 180 / Math.PI;
+				this.slope.style.transform = 'rotate(' + this.angle + 'deg)';
+				this.slopeAngle.innerHTML = Math.round(this.angle) + "&deg;"; 
+				let circleAngle = -(90 - this.angle);
+				this.slopeAngleCircle.style.transform = 'rotate(' + circleAngle + 'deg)';
+
+				this.velocityArrowContainer.style.transform = 'rotate(' + this.angle + 'deg) translate(-'+Math.round(this.offset)+'px, -20px)';
+				this.velocityArrow.style.width = (magnitude / 3.5) + 'px';
+				this.velocityArrow.style.transform = 'rotate(' + (velocityAngle-this.angle) + 'deg)';
+				let arrowBounds = this.velocityArrow.getBoundingClientRect();
+				let containerBounds = this.root.getBoundingClientRect();
+				this.velocityComponents.style.left = (arrowBounds.left-containerBounds.left)+'px';
+				this.velocityComponents.style.bottom = Math.abs(arrowBounds.bottom-containerBounds.bottom)+'px';
+				this.velocityComponents.style.width = (arrowBounds.right-arrowBounds.left)+'px';
+				this.velocityComponents.style.height = Math.abs(arrowBounds.top-arrowBounds.bottom)+'px';
+
+				this.velocityX.innerHTML = Math.abs(Math.round(this.velocity.x));
+				this.velocityY.innerHTML = Math.round(this.velocity.y);
+				this.velocityMagnitude.innerHTML = Math.round(magnitude);
+
+				let prevRampsliding = this.rampsliding;
+				this.rampsliding = this.velocity.y > 180;
+				if (this.rampsliding !== prevRampsliding) {
+					if (this.rampsliding) {
+						this.root.classList.add('rampsliding');
+						if (this.status) {
+							this.status.innerHTML = "player state: 'in air'";
+						}
+					} else {
+						this.root.classList.remove('rampsliding');
+						if (this.status) {
+							this.status.innerHTML = "player state: 'on ground'";
+						}
+					}
+				}
+
+				if (this.onupdate) {
+					this.onupdate(this);
+				}
+			}
+		}
+
 		let initDiagram2 = function() {
-			let diagram2 = new RampslideDiagram(document.getElementById('clipvelocity-example'));
+			let diagram2 = new ClipVelocityDiagram(document.getElementById('clipvelocity-example'));
 
 			let clipVelocity = function(velocity, normal) {
 				let backoff = velocity.dot(normal);
@@ -495,7 +649,8 @@ Surfing comes from a separate but related mechanism. If a surface is steep enoug
 			let surfaceNormalComponents = diagram2.root.querySelector('.normal-components');
 			let surfaceNormalX = diagram2.root.querySelector('.normal-x');
 			let surfaceNormalY = diagram2.root.querySelector('.normal-y');
-			var stepButton = diagram2.root.querySelector('.controls.step');
+			let stepButton = diagram2.root.querySelector('.controls.step');
+			let gravButton = diagram2.root.querySelector('.controls.grav');
 			diagram2.onupdate = function() {
 				surfaceNormalArrow.style.transform = 'rotate('+(Math.round(this.angle)+90)+'deg) translate(-4px, 400px)';
 
@@ -511,15 +666,65 @@ Surfing comes from a separate but related mechanism. If a surface is steep enoug
 			}.bind(diagram2);
 
 			stepButton.addEventListener('click', e => {
-				let velocity = diagram2.getVelocity();
+				let velocity = diagram2.velocity;
 				let clipped = clipVelocity(velocity, diagram2.getSurfaceNormal());
-				diagram2.magnitude = clipped.velocity.length();
+				diagram2.velocity = clipped.velocity;
 				diagram2.update();
 
-				diagram2.root.querySelector('.info .backoff').innerHTML = clipped.backoff;
-				diagram2.root.querySelector('.info .change').innerHTML = clipped.changeX + ", " + clipped.changeY;
+				diagram2.root.querySelector('.info .backoff').innerHTML = clipped.backoff.toFixed(2);
+				diagram2.root.querySelector('.info .change').innerHTML = clipped.changeX.toFixed(2) + ", " + clipped.changeY.toFixed(2);
 				diagram2.root.querySelector('.info .prev-velocity').innerHTML = Math.round(Math.abs(velocity.x)) + ", " + Math.round(velocity.y);
+				return false;
 			});
+			gravButton.addEventListener('click', e => {
+				diagram2.velocity.y -= 25;
+				diagram2.update();
+				return false;
+			});
+
+			var curStep = 0;
+			let stepsContainer = diagram2.root.querySelector('.steps');
+			var steps = [
+				{
+					element: stepsContainer.querySelector('.clip-velocity'),
+					fn: function() {
+						let velocity = diagram2.velocity;
+						let clipped = clipVelocity(velocity, diagram2.getSurfaceNormal());
+						diagram2.velocity = clipped.velocity;
+						diagram2.update();
+					}
+				},
+				{
+					element: stepsContainer.querySelector('.move'),
+					fn: function() {
+						diagram2.offset += diagram2.velocity.length() / 75;
+						diagram2.update();
+					}
+				},
+				{
+					element: stepsContainer.querySelector('.gravity'),
+					fn: function() {
+						diagram2.velocity.y -= 25;
+						diagram2.update();
+					}
+				}
+			];
+			setInterval(function() {
+				if (Math.round(diagram2.velocity.y) <= 200) {
+					steps[curStep].element.classList.remove('current');
+					diagram2.velocity = diagram2.getVelocity(700);
+					diagram2.offset = 50;
+					diagram2.update();
+					curStep = 0;
+					steps[curStep].element.classList.add('current');
+					return;
+				}
+
+				steps[curStep].element.classList.remove('current');
+				curStep = (curStep+1) % steps.length;
+				steps[curStep].element.classList.add('current');
+				steps[curStep].fn();
+			}, 1000);
 
 			//diagram2.update();
 
