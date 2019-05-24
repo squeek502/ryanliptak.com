@@ -101,11 +101,6 @@ In this loop, `ClipVelocity` will only ever redistribute any change in velocity 
 		<div class="ground"></div>
 		<div class="slope-angle">30&deg;</div>
 		<div class="slope-angle-circle"><div></div></div>
-		<div class="normal-arrow"></div>
-		<div class="normal-components">
-			<div class="normal-x">0.50</div>
-			<div class="normal-y">0.87</div>
-		</div>
 		<div class="velocity-arrow-container">
 			<div class="velocity-arrow">
 				<div class="velocity-magnitude">700</div>
@@ -351,32 +346,11 @@ Even more remarkable is that this phenomenon was actually fairly common in games
 				let backoff = velocity.dot(normal);
 				let changeX = normal.x * backoff;
 				let changeY = normal.y * backoff;
-				return {
-					backoff, changeX, changeY,
-					velocity: new Vec2d(
-						velocity.x - changeX,
-						velocity.y - changeY
-					)
-				};
+				return new Vec2d(
+					velocity.x - changeX,
+					velocity.y - changeY
+				);
 			};
-
-			let surfaceNormalArrow = diagram2.root.querySelector('.normal-arrow');
-			let surfaceNormalComponents = diagram2.root.querySelector('.normal-components');
-			let surfaceNormalX = diagram2.root.querySelector('.normal-x');
-			let surfaceNormalY = diagram2.root.querySelector('.normal-y');
-			diagram2.onupdate = function() {
-				surfaceNormalArrow.style.transform = 'rotate('+(Math.round(this.angle)+90)+'deg) translate(-4px, 400px)';
-
-				let normal = diagram2.getSurfaceNormal();
-				let arrowBounds = surfaceNormalArrow.getBoundingClientRect();
-				let containerBounds = this.root.getBoundingClientRect();
-				surfaceNormalComponents.style.left = (arrowBounds.left-containerBounds.left)+'px';
-				surfaceNormalComponents.style.bottom = Math.abs(arrowBounds.bottom-containerBounds.bottom)+'px';
-				surfaceNormalComponents.style.width = (arrowBounds.right-arrowBounds.left)+'px';
-				surfaceNormalComponents.style.height = Math.abs(arrowBounds.top-arrowBounds.bottom)+'px';
-				surfaceNormalX.innerHTML = normal.x.toFixed(2);
-				surfaceNormalY.innerHTML = normal.y.toFixed(2);
-			}.bind(diagram2);
 
 			var curStep = 0;
 			let stepsContainer = diagram2.root.querySelector('.steps');
@@ -385,9 +359,7 @@ Even more remarkable is that this phenomenon was actually fairly common in games
 				{
 					element: stepsContainer.querySelector('.clip-velocity'),
 					fn: function() {
-						let velocity = diagram2.velocity;
-						let clipped = clipVelocity(velocity, diagram2.getSurfaceNormal());
-						diagram2.velocity = clipped.velocity;
+						diagram2.velocity = clipVelocity(diagram2.velocity, diagram2.getSurfaceNormal());
 						diagram2.update();
 					}
 				},
@@ -407,7 +379,7 @@ Even more remarkable is that this phenomenon was actually fairly common in games
 				}
 			];
 			setInterval(function() {
-				if (Math.round(diagram2.offset) >= 200 || Math.round(diagram2.velocity.y) < 200) {
+				if (Math.round(diagram2.offset) >= 200 || Math.round(diagram2.velocity.y) <= 180) {
 					steps[curStep].element.classList.remove('current');
 					diagram2.velocity = diagram2.getVelocity(700);
 					diagram2.offset = 50;
@@ -557,55 +529,6 @@ Even more remarkable is that this phenomenon was actually fairly common in games
 			left: 0px; right: 0px; top: 1em;
 			text-align: center;
 		}
-		.rampsliding-diagram .normal-arrow {
-			position: absolute;
-			bottom: 30px;
-			right: 50px;
-			width: 50px;
-			height: 2px;
-			transform-origin: 100% 2px;
-			transform: rotate(120deg) translate(-4px, 400px);
-			background-color: #8E78B5;
-			z-index: 3;
-		}
-		.rampsliding-diagram .normal-arrow::after { 
-			content: '';
-			width: 0; 
-			height: 0; 
-			border-top: 5px solid transparent;
-			border-bottom: 5px solid transparent;
-			border-right: 20px solid #8E78B5;
-			position: absolute;
-			left: 0px;
-			top: -4px;
-			z-index: 3;
-		}
-		.rampsliding-diagram .normal-components {
-			position: absolute;
-			border-left: 1px dashed;
-			border-top: 1px dashed;
-			border-color: rgba(0,0,0,.5);
-			z-index: 4;
-			left: 105.583px; bottom: 232.467px;
-			width: 26.7333px; height: 44.3px;
-		}
-		.rampsliding-diagram .normal-x {
-			position:absolute;
-			text-align: center;
-			top: -2em;
-			left: 50%;
-			transform: translate(-50%, 0);
-			color: rgba(0,0,0,.5);
-		}
-		.rampsliding-diagram .normal-y {
-			position:absolute;
-			right: 100%;
-			margin-right: .75em;
-			top: 50%;
-			transform: translate(0, -50%);
-			text-align: right;
-			color: rgba(0,0,0,.5);
-		}
 		.rampsliding-diagram .controls {
 			padding: 0.5em; margin: 0.5em;
 			cursor: pointer;
@@ -646,6 +569,10 @@ Even more remarkable is that this phenomenon was actually fairly common in games
 			left: 200.2px; bottom: 97.3167px;
 			width: 174.7px; height: 102.6px;
 		}
+		#clipvelocity-example.rampsliding-diagram .velocity-components {
+			left: 243.5px; bottom: 72.3167px;
+			width: 174.7px; height: 102.6px;
+		}
 		.rampsliding-diagram .steps {
 			list-style: none;
 			text-align: left;
@@ -666,10 +593,6 @@ Even more remarkable is that this phenomenon was actually fairly common in games
 			margin-right: 3px;
 			position: absolute;
 			font-weight: bold;
-		}
-		#clipvelocity-example.rampsliding-diagram .velocity-components {
-			left: 243.5px; bottom: 72.3167px;
-			width: 174.7px; height: 102.6px;
 		}
 		.rampsliding-diagram .gravity-controls {
 			text-align: left;
