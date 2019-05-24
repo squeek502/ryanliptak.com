@@ -18,7 +18,7 @@ if (pmove.velocity[2] > 180)
 }
 ```
 
-That is, if the player is moving up (velocity index 2 is the vertical component) at greater than 180 units, then the player is automatically considered in the air, and this overrides all other 'on ground' checks. With this, if a player is colliding with a ramp such that their velocity along the ramp has a large enough vertical component, then they are considered in the air, and thus ground friction is simply not applied (specifically, `PM_AirMove` is called instead of `PM_GroundMove`).
+That is, if the player is ever moving up at greater than 180 units (velocity index 2 is the vertical component), then the player is automatically considered 'in the air,' and this overrides all other 'on ground' checks. With this, if a player is colliding with a ramp such that their velocity along the ramp has a large enough vertical component, then they are considered in the air, and thus ground friction is simply not applied (specifically, `PM_AirMove` is called instead of `PM_GroundMove`).
 
 This creates two emergent conditions for rampsliding:
 
@@ -123,24 +123,24 @@ In this loop, `ClipVelocity` will only ever redistribute any change in velocity 
 	<i style="background-color: rgba(0,0,0, .1); margin:0; padding: .25em;">Note that the velocity's magnitude only changes in the 'Apply Gravity' phase</i>
 </div>
 
-So, when rampsliding, *all of the speed loss is due to gravity*. If you set gravity to 0, you can rampslide infinitely, and if you set gravity really high, you can only rampslide for a second or two. This makes sense if you think of rampsliding in terms of an object sliding up a completely frictionless slope: the only force that will make that object eventually stop and start sliding back down the slope is gravity.
+So, when rampsliding, *all of the speed loss is due to gravity*. If you set gravity to 0, you can rampslide infinitely, and if you set gravity really high, you can only rampslide for a second or two. This makes sense if you think of rampsliding in terms of an object sliding up a completely frictionless slope: the force that will make that object eventually stop and start sliding back down the slope is gravity.
 
 ## What about surfing (like in [Counter-Strike surf maps](https://www.youtube.com/watch?v=hMsPf8eSW3k))?
 
 Surfing comes from a separate but related mechanism: if a surface is steep enough, then the player is *always* considered 'in the air' when colliding with it. The speed gain while surfing comes from two places:
 
 - The same interaction with `ClipVelocity` described above makes you gain speed from gravity when moving down a slope
-- [`AirAccelerate` allows you to gain a bit more horizontal speed](https://flafla2.github.io/2015/02/14/bunnyhop.html) when done right (and to control your position on the slope)
+- [`AirAccelerate` allows you to gain a bit more horizontal speed](https://flafla2.github.io/2015/02/14/bunnyhop.html) (when done right), and to control your position on the slope
 
 ## Wrapping up
 
-It's pretty remarkable to note that almost every movement technique in games like Team Fortress Classic and Fortress Forever were originally accidental:
+It's pretty remarkable to note that almost every movement technique in games like Team Fortress Classic and Fortress Forever was originally accidental:
 
 - Bunnyhopping was an unintentional feature spawned from how acceleration was implemented
 - Rampsliding was an unintentional feature spawned from a fix for a completely unrelated 'stuck on the ground' bug
 - Concussion grenades were intended to displace/disorient the enemy team, [but they got used to boost yourself instead](https://youtu.be/AA7ytpUN2so?t=21) and [form the basis of TFC/FF's high-speed offense](https://youtu.be/BPZsL6R0uq0?t=168)
 
-Even more remarkable is that this phenomenon was actually fairly common in games from around that time, where unintended mechanics become fundamental to the gameplay as we know it now (see things like [mutalisk micro in StarCraft](https://youtu.be/qVqrMqtaJPc?t=90) or [k-style in GunZ](https://www.youtube.com/watch?v=ppSU5xeEMdU)).
+Even more remarkable is that this phenomenon was actually fairly common in games from around that time, where unintended mechanics became fundamental to the gameplay as we know it now (see things like [mutalisk micro in StarCraft](https://youtu.be/qVqrMqtaJPc?t=90) or [k-style in GunZ](https://www.youtube.com/watch?v=ppSU5xeEMdU)).
 
 <script>
 	/* jshint esversion: 6 */
