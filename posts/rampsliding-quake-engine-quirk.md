@@ -2,7 +2,7 @@ In Quake and derivative engines (like Half-Life 1 & 2), it is possible to slide 
 
 <div style="text-align: center;">
 <video autoplay loop muted style="margin-left:auto; margin-right:auto; display: block;">
-	<source src="/images/rampsliding-engine-quirk/rampslide.mp4" type="video/mp4">
+	<source src="/images/rampsliding-quake-engine-quirk/rampslide.mp4" type="video/mp4">
 </video>
 <i class="caption">Rampsliding in Team Fortress Classic from the video <a href="https://www.youtube.com/watch?v=uWGUoMbv-VA">notsofantastic</a></i>
 </div>
