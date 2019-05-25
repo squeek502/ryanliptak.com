@@ -160,8 +160,6 @@ status("Rendering atom.xml")
 data.page = {}
 
 -- Categories
-fsutil.mkdir("public/categories")
-
 for category in pairs(data.site.categories) do
   assert(data.site.categoryMap[category], "missing category in motyl.conf: "..category)
   local categoryURL = data.site.categoryMap[category] .. "/"
