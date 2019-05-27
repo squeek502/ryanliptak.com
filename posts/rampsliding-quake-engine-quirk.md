@@ -110,7 +110,7 @@ Its job is to make velocity parallel to the surface that is being collided with.
 		</div>
 		<div class="status-clipvelocity">velocity maintained during ClipVelocity: 71%</div>
 	</div>
-	<i class="caption">Side note: this explains why you can often maintain more speed by landing on the ground right in front of a ramp instead of landing directly on the ramp</i>
+	<i class="caption">Speed loss due to ClipVelocity at different approach angles</i>
 </div>
 
 This is where gravity comes into the picture: because you are considered 'in the air' while rampsliding, gravity is applied every frame. This creates a loop that goes like this:
@@ -151,7 +151,7 @@ In this loop, `ClipVelocity` basically serves to redistribute changes in velocit
 	<i class="caption">Note that with gravity <= 25, velocity's magnitude only changes in the 'Apply Gravity' phase</i>
 </div>
 
-So, if you are rampsliding on a constant slope, *all speed loss is due to gravity*. If you set gravity to 0, you can rampslide infinitely, and if you set gravity really high, you can only rampslide for a second or two. This makes sense if you think of rampsliding in terms of an object sliding up a completely frictionless slope: the force that will make that object eventually stop and start sliding back down the slope is gravity.
+So, if you are rampsliding on a constant slope, *all speed loss is typically due to gravity*. If you set gravity to 0, you can rampslide infinitely, and if you set gravity really high, you can only rampslide for a second or two. This makes sense if you think of rampsliding in terms of an object sliding up a completely frictionless slope: the force that will make that object eventually stop and start sliding back down the slope is gravity.
 
 ## What about surfing (like in [Counter-Strike surf maps](https://www.youtube.com/watch?v=hMsPf8eSW3k))?
 
@@ -169,6 +169,66 @@ It's pretty remarkable to note that almost every movement technique in games lik
 - Concussion grenades were intended to displace/disorient the enemy team, [but they got used to boost yourself instead](https://youtu.be/AA7ytpUN2so?t=21) and [form the basis of TFC/FF's high-speed offense](https://youtu.be/BPZsL6R0uq0?t=168)
 
 Even more remarkable is that this phenomenon is actually somewhat common in games, where unintended mechanics become fundamental to the gameplay as we know it today (see things like [mutalisk micro in StarCraft](https://youtu.be/qVqrMqtaJPc?t=90), or [k-style in GunZ](https://www.youtube.com/watch?v=ppSU5xeEMdU), or even denying creeps in DotA).
+
+---
+
+### Addendum: Landing in front of a ramp instead of directly on it
+
+After rampsliding for a while, it becomes clear that if you land on a flat surface right before a ramp instead of directly on the ramp, you will often maintain more speed. This is due to how `ClipVelocity` works: you can maintain more speed after two calls of `ClipVelocity` with smaller angles than after a single call with a larger angle.
+
+<div style="text-align: center;">
+	<div id="clipvelocity-addendum-1" class="rampsliding-diagram">
+		<div class="slope"></div>
+		<div class="flat"></div>
+		<div class="ground"></div>
+		<div class="slope-angle">30&deg;</div>
+		<div class="slope-angle-circle"><div></div></div>
+		<div class="velocity-arrow-container">
+			<div class="velocity-arrow">
+				<div class="velocity-magnitude">350</div>
+			</div>
+		</div>
+		<div class="velocity-arrow-enter-container">
+			<div class="velocity-arrow">
+				<div class="velocity-magnitude">700</div>
+			</div>
+		</div>
+		<div class="velocity-components" style="display:none">
+			<div class="velocity-x">606</div>
+			<div class="velocity-y">350</div>
+		</div>
+	</div>
+	<div id="clipvelocity-addendum-2" class="rampsliding-diagram">
+		<div class="slope"></div>
+		<div class="flat"></div>
+		<div class="ground"></div>
+		<div class="slope-angle">30&deg;</div>
+		<div class="slope-angle-circle"><div></div></div>
+		<div class="velocity-arrow-container">
+			<div class="velocity-arrow">
+				<div class="velocity-magnitude">525</div>
+			</div>
+		</div>
+		<div class="velocity-arrow-intermediate-container">
+			<div class="velocity-arrow">
+				<div class="velocity-magnitude">606</div>
+			</div>
+		</div>
+		<div class="velocity-arrow-enter-container">
+			<div class="velocity-arrow">
+				<div class="velocity-magnitude">700</div>
+			</div>
+		</div>
+		<div class="velocity-components" style="display:none">
+			<div class="velocity-x">606</div>
+			<div class="velocity-y">350</div>
+		</div>
+		<div class="status-clipvelocity">increased % velocity maintained from landing on flat: 50%</div>
+	</div>
+	<i class="caption">Comparison of landing on the ramp directly vs. landing right in front of the ramp</i>
+</div>
+
+Note that in the above diagram, the velocity loss that would occur from friction when landing on the ground is not represented (i.e. the diagram is showing 'perfect' execution where you land *directly* in front of the ramp). In reality, the velocity maintained when landing on flat varies depending on how long you slide on the ground before hitting the ramp, since ground friction will be applied during that time.
 
 <script>
 	// this is mostly a sloppy mess
@@ -194,6 +254,7 @@ Even more remarkable is that this phenomenon is actually somewhat common in game
 				this.offset = startingValues.offset;
 				this.alwaysParallel = startingValues.alwaysParallel;
 				this.velocity = this.getVelocity(this.magnitude);
+				this.scale = startingValues.scale || 3.5;
 			}
 
 			getVelocity(magnitude) {
@@ -228,7 +289,7 @@ Even more remarkable is that this phenomenon is actually somewhat common in game
 				this.slopeAngleCircle.style.transform = 'rotate(' + circleAngle + 'deg)';
 
 				this.velocityArrowContainer.style.transform = 'rotate(' + this.angle + 'deg) translate(-'+Math.round(this.offset)+'px, -20px)';
-				this.velocityArrow.style.width = (magnitude / 3.5) + 'px';
+				this.velocityArrow.style.width = (magnitude / this.scale) + 'px';
 				this.velocityArrow.style.transform = 'rotate(' + (velocityAngle-this.angle) + 'deg)';
 				let arrowBounds = this.velocityArrow.getBoundingClientRect();
 				let containerBounds = this.root.getBoundingClientRect();
@@ -588,10 +649,143 @@ Even more remarkable is that this phenomenon is actually somewhat common in game
 			}, 1000);
 		};
 
+		let initDiagram4 = function() {
+			let diagram = new RampslideDiagram(
+				document.getElementById('clipvelocity-addendum-1'), 
+				{angle: 30, magnitude: 700, offset: 50, alwaysParallel: true, scale: 6}
+			);
+
+			{
+				let enterAngle = 60;
+				let enterMagnitude = 700;
+				let beforeVelArrowContainer = diagram.root.querySelector('.velocity-arrow-enter-container');
+				let beforeVelArrow = beforeVelArrowContainer.querySelector('.velocity-arrow');
+
+				diagram.updateEnterAngle = function(newAngle) {
+					enterAngle = newAngle;
+					let enterVelocity = getVector(diagram.angle-enterAngle, enterMagnitude);
+					let clippedVec = clipVelocity(enterVelocity, diagram.getSurfaceNormal());
+					diagram.magnitude = clippedVec.length();
+				};
+
+				diagram.updateEnterAngle(enterAngle);
+
+				diagram.onupdate = function() {
+					beforeVelArrow.style.width = (enterMagnitude / diagram.scale) + 'px';
+					let afterVelRect = diagram.velocityArrowContainer.getBoundingClientRect();
+					let containerRect = diagram.root.getBoundingClientRect();
+					let enterAnchorRelative = new Vec2d(
+						afterVelRect.right - containerRect.left,
+						afterVelRect.bottom - containerRect.top
+					);
+					beforeVelArrowContainer.style.left=enterAnchorRelative.x + 'px';
+					beforeVelArrowContainer.style.top=enterAnchorRelative.y + 'px';
+					beforeVelArrowContainer.style.transform = 'rotate('+(diagram.angle-enterAngle)+'deg) translate(0, -3px)';
+				};
+			}
+
+			let diagram2 = new RampslideDiagram(
+				document.getElementById('clipvelocity-addendum-2'), 
+				{angle: 30, magnitude: 700, offset: 0, alwaysParallel: true, scale: 6}
+			);
+
+			{
+				let enterAngle = 60;
+				let enterMagnitude = 700;
+				let interVelArrowContainer = diagram2.root.querySelector('.velocity-arrow-intermediate-container');
+				let interVelArrow = interVelArrowContainer.querySelector('.velocity-arrow');
+				let interVelArrowMagnitude = interVelArrowContainer.querySelector('.velocity-magnitude');
+				let beforeVelArrowContainer = diagram2.root.querySelector('.velocity-arrow-enter-container');
+				let beforeVelArrow = beforeVelArrowContainer.querySelector('.velocity-arrow');
+				let status = diagram2.root.querySelector('.status-clipvelocity');
+
+				diagram2.updateEnterAngle = function(newAngle) {
+					enterAngle = newAngle;
+					let enterVelocity = getVector(diagram2.angle-enterAngle, enterMagnitude);
+					diagram2.intermediateVelocity = clipVelocity(enterVelocity, new Vec2d(0, 1));
+					diagram2.velocity = clipVelocity(diagram2.intermediateVelocity, diagram2.getSurfaceNormal());
+					diagram2.magnitude = diagram2.velocity.length();
+				};
+
+				diagram2.updateEnterAngle(enterAngle);
+
+				diagram2.onupdate = function() {
+					beforeVelArrow.style.width = (enterMagnitude / diagram2.scale) + 'px';
+					interVelArrow.style.width = (diagram2.intermediateVelocity.length() / diagram2.scale) + 'px';
+					interVelArrowMagnitude.innerHTML = Math.round(diagram2.intermediateVelocity.length());
+					let afterVelRect = interVelArrow.getBoundingClientRect();
+					let containerRect = diagram2.root.getBoundingClientRect();
+					let enterAnchorRelative = new Vec2d(
+						afterVelRect.right - containerRect.left,
+						afterVelRect.bottom - containerRect.top
+					);
+					beforeVelArrowContainer.style.left=enterAnchorRelative.x + 'px';
+					beforeVelArrowContainer.style.top=enterAnchorRelative.y + 'px';
+					beforeVelArrowContainer.style.transform = 'rotate('+(diagram2.angle-enterAngle)+'deg) translate(0, -3px)';
+					let percentIncrease = (diagram2.velocity.length() - diagram.magnitude) / diagram.magnitude * 100;
+					status.innerHTML = 'increased % velocity maintained from landing on flat: ' + Math.round(percentIncrease) + '%';
+				};
+			}
+
+			let animationFrameRequest;
+			function startAnimation(options) {
+				let start = performance.now();
+
+				animationFrameRequest = requestAnimationFrame(function animate(time) {
+					// timeFraction goes from 0 to 1
+					let timeFraction = (time - start) / options.duration;
+					if (timeFraction > 1) timeFraction = 1;
+					// the start can actually get a negative value for some reason
+					// so clamp it
+					if (timeFraction < 0) timeFraction = 0;
+
+					// calculate the current animation state
+					let progress = options.timing ? options.timing(timeFraction) : timeFraction;
+
+					options.draw(progress); // draw it
+
+					if (timeFraction < 1) {
+						animationFrameRequest = requestAnimationFrame(animate);
+					} else if (options.next) {
+						startAnimation(options.next);
+					}
+				});
+			}
+			let start = { duration: 2000,
+				draw: function(progress) {
+					diagram.updateEnterAngle(60 - 20 * progress);
+					diagram2.updateEnterAngle(60 - 20 * progress);
+					diagram.update();
+					diagram2.update();
+				}
+			};
+			let up = { duration: 4000,
+				draw: function(progress) {
+					diagram.updateEnterAngle(40 + 40 * progress);
+					diagram2.updateEnterAngle(40 + 40 * progress);
+					diagram.update();
+					diagram2.update();
+				}
+			};
+			let down = { duration: 4000,
+				draw: function(progress) {
+					diagram.updateEnterAngle(80 - 40 * progress);
+					diagram2.updateEnterAngle(80 - 40 * progress);
+					diagram.update();
+					diagram2.update();
+				}
+			};
+			start.next = up;
+			up.next = down;
+			down.next = up;
+			startAnimation(start);
+		};
+
 		let ready = function() {
 			initDiagram1();
 			initDiagram2();
 			initDiagram3();
+			initDiagram4();
 		};
 		if (document.readyState == 'complete' || document.readyState == 'loaded') {
 			ready();
@@ -653,6 +847,64 @@ Even more remarkable is that this phenomenon is actually somewhat common in game
 			width: 400px;
 			height: 1px;
 			background-color: rgba(0,0,0,0.5);
+		}
+		#clipvelocity-addendum-1.rampsliding-diagram,
+		#clipvelocity-addendum-2.rampsliding-diagram {
+			height: 175px;
+		}
+		#clipvelocity-addendum-1.rampsliding-diagram .flat,
+		#clipvelocity-addendum-2.rampsliding-diagram .flat {
+			position: absolute;
+			bottom: 30px;
+			right: 50px;
+			width: 200px;
+			height: 5px;
+			background-color: black;
+		}
+		#clipvelocity-addendum-1.rampsliding-diagram .slope,
+		#clipvelocity-addendum-2.rampsliding-diagram .slope {
+			right: 250px;
+			width: 200px;
+		}
+		#clipvelocity-addendum-1.rampsliding-diagram .slope-angle-circle,
+		#clipvelocity-addendum-2.rampsliding-diagram .slope-angle-circle {
+			right: 250px;
+			width: 200px;
+			height: 200px;
+		}
+		#clipvelocity-addendum-1.rampsliding-diagram .slope-angle-circle > div,
+		#clipvelocity-addendum-2.rampsliding-diagram .slope-angle-circle > div {
+			width: 199px;
+			height: 199px;
+		}
+		#clipvelocity-addendum-1.rampsliding-diagram .velocity-arrow-container,
+		#clipvelocity-addendum-2.rampsliding-diagram .velocity-arrow-container {
+			right: 250px;
+		}
+		#clipvelocity-addendum-1 .velocity-arrow-container {
+			transform: rotate(30deg) translate(-50px, -20px);
+		}
+		#clipvelocity-addendum-1 .velocity-arrow-container .velocity-arrow {
+			width: 58.3333px;
+		}
+		#clipvelocity-addendum-1 .velocity-arrow-enter-container {
+			left: 216.7px; top: 102.683px; transform: rotate(-30deg) translate(0px, -3px);
+		}
+		#clipvelocity-addendum-1 .velocity-arrow-enter-container .velocity-arrow {
+			width: 116.667px;
+		}
+
+		#clipvelocity-addendum-2 .velocity-arrow-container {
+			transform: rotate(30deg) translate(0px, -20px);
+		}
+		#clipvelocity-addendum-2 .velocity-arrow-container .velocity-arrow {
+			width: 87.5px;
+		}
+		#clipvelocity-addendum-2 .velocity-arrow-enter-container {
+			left: 361.033px; top: 128px; transform: rotate(-30deg) translate(0px, -3px);
+		}
+		#clipvelocity-addendum-2 .velocity-arrow-enter-container .velocity-arrow {
+			width: 116.667px;
 		}
 		.rampsliding-diagram .velocity-arrow {
 			position: absolute;
@@ -846,10 +1098,19 @@ Even more remarkable is that this phenomenon is actually somewhat common in game
 		}
 		#clipvelocity-enter-example .velocity-arrow-container .velocity-arrow {
 			width: 141.421px;
+		}
+		#clipvelocity-enter-example .velocity-arrow-container .velocity-arrow,
+		#clipvelocity-addendum-1 .velocity-arrow-container .velocity-arrow,
+		#clipvelocity-addendum-2 .velocity-arrow-container .velocity-arrow {
 			background-color: #5A06CC;
 		}
-		#clipvelocity-enter-example .velocity-arrow-container .velocity-arrow::after {
+		#clipvelocity-enter-example .velocity-arrow-container .velocity-arrow::after,
+		#clipvelocity-addendum-1 .velocity-arrow-container .velocity-arrow::after,
+		#clipvelocity-addendum-2 .velocity-arrow-container .velocity-arrow::after {
 			border-right-color: #5A06CC;
+		}
+		#clipvelocity-addendum-2 .status-clipvelocity {
+			top: 0px;
 		}
 		.rampsliding-diagram .velocity-arrow-enter-container {
 			position: absolute;
@@ -872,6 +1133,24 @@ Even more remarkable is that this phenomenon is actually somewhat common in game
 		}
 		.rampsliding-diagram .velocity-arrow-enter-container .velocity-arrow::after {
 			border-right-color: #484848;
+		}
+		.rampsliding-diagram .velocity-arrow-intermediate-container {
+			position: absolute;
+			width: 200px;
+			z-index: 5;
+			left: 260px; bottom: 50px;
+		}
+		.rampsliding-diagram .velocity-arrow-intermediate-container .velocity-arrow {
+			position: absolute;
+			top: 0px;
+			left: 0px;
+			width: 101.036px;
+			height: 3px;
+			z-index: 5;
+			background-color: #645175;
+		}
+		.rampsliding-diagram .velocity-arrow-intermediate-container .velocity-arrow::after {
+			border-right-color: #645175;
 		}
 	</style>
 </div>
