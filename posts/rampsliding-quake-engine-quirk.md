@@ -174,7 +174,7 @@ Even more remarkable is that this phenomenon is actually somewhat common in game
 
 ### Addendum: Landing in front of a ramp instead of directly on it
 
-After rampsliding for a while, it becomes clear that if you land on a flat surface right before a ramp instead of directly on the ramp, you will often maintain more speed. This is due to how `ClipVelocity` works: you can maintain more speed after two calls of `ClipVelocity` with smaller angles than after a single call with a larger angle.
+After playing a game with rampsliding for a while, it becomes clear that if you land on a flat surface right before a ramp instead of directly on the ramp, you will often maintain more speed. This is due to how `ClipVelocity` works: you can maintain more speed after two calls of `ClipVelocity` with smaller angle differentials than after a single call with a larger angle differential.
 
 <div style="text-align: center;">
 	<div id="clipvelocity-addendum-1" class="rampsliding-diagram">
