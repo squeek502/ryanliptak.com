@@ -89,7 +89,7 @@ for (i=0; i<3; i++)
 Its job is to make velocity parallel to the surface that is being collided with. If the velocity is not already close to parallel, then non-negligible speed loss can result from `ClipVelocity`, but once velocity *is* parallel to the surface, running it through the function again will have no effect. `ClipVelocity` therefore is responsible for speed loss when first colliding with a slope, and makes it so that the angle of your velocity entering the ramp matters for how much speed you ultimately maintain, but it does not explain speed loss *while* rampsliding.
 
 <div style="text-align: center;">
-	<div id="clipvelocity-enter-example" class="rampsliding-diagram rampsliding">
+	<div id="clipvelocity-enter-example" class="rampsliding-diagram">
 		<div class="slope"></div>
 		<div class="ground"></div>
 		<div class="slope-angle">30&deg;</div>
@@ -103,10 +103,6 @@ Its job is to make velocity parallel to the surface that is being collided with.
 			<div class="velocity-arrow">
 				<div class="velocity-magnitude">700</div>
 			</div>
-		</div>
-		<div class="velocity-components" style="display:none">
-			<div class="velocity-x">606</div>
-			<div class="velocity-y">350</div>
 		</div>
 		<div class="status-clipvelocity">velocity maintained during ClipVelocity: 71%</div>
 	</div>
@@ -193,10 +189,6 @@ After playing a game with rampsliding for a while, it becomes clear that if you 
 				<div class="velocity-magnitude">700</div>
 			</div>
 		</div>
-		<div class="velocity-components" style="display:none">
-			<div class="velocity-x">606</div>
-			<div class="velocity-y">350</div>
-		</div>
 	</div>
 	<div id="clipvelocity-addendum-2" class="rampsliding-diagram">
 		<div class="slope"></div>
@@ -218,10 +210,6 @@ After playing a game with rampsliding for a while, it becomes clear that if you 
 			<div class="velocity-arrow">
 				<div class="velocity-magnitude">700</div>
 			</div>
-		</div>
-		<div class="velocity-components" style="display:none">
-			<div class="velocity-x">606</div>
-			<div class="velocity-y">350</div>
 		</div>
 		<div class="status-clipvelocity">increased % velocity maintained from landing on flat: 50%</div>
 	</div>
@@ -272,38 +260,43 @@ Note that in the above diagram, the velocity loss that would occur from friction
 				return new Vec2d(x, y).normalize();
 			}
 
-			update() {
-				let magnitude, velocityAngle, velocity;
+			updateValues() {
 				if (this.alwaysParallel) {
-					magnitude = this.magnitude;
-					velocityAngle = this.angle;
-					velocity = this.getVelocity(magnitude);
+					this.velocityAngle = this.angle;
+					this.velocity = this.getVelocity(this.magnitude);
 				} else {
-					magnitude = this.velocity.length();
-					velocityAngle = 180 - Math.atan2(this.velocity.y, this.velocity.x) * 180 / Math.PI;
-					velocity = this.velocity;
+					this.magnitude = this.velocity.length();
+					this.velocityAngle = 180 - Math.atan2(this.velocity.y, this.velocity.x) * 180 / Math.PI;
 				}
+			}
+
+			updateSlope() {
 				this.slope.style.transform = 'rotate(' + this.angle + 'deg)';
 				this.slopeAngle.innerHTML = Math.round(this.angle) + "&deg;"; 
 				let circleAngle = -(90 - this.angle);
 				this.slopeAngleCircle.style.transform = 'rotate(' + circleAngle + 'deg)';
+			}
 
+			updateVelocity() {
 				this.velocityArrowContainer.style.transform = 'rotate(' + this.angle + 'deg) translate(-'+Math.round(this.offset)+'px, -20px)';
-				this.velocityArrow.style.width = (magnitude / this.scale) + 'px';
-				this.velocityArrow.style.transform = 'rotate(' + (velocityAngle-this.angle) + 'deg)';
+				this.velocityArrow.style.width = (this.magnitude / this.scale) + 'px';
+				this.velocityArrow.style.transform = 'rotate(' + (this.velocityAngle-this.angle) + 'deg)';
 				let arrowBounds = this.velocityArrow.getBoundingClientRect();
 				let containerBounds = this.root.getBoundingClientRect();
-				this.velocityComponents.style.left = (arrowBounds.left-containerBounds.left)+'px';
-				this.velocityComponents.style.bottom = Math.abs(arrowBounds.bottom-containerBounds.bottom)+'px';
-				this.velocityComponents.style.width = (arrowBounds.right-arrowBounds.left)+'px';
-				this.velocityComponents.style.height = Math.abs(arrowBounds.top-arrowBounds.bottom)+'px';
+				if (this.velocityComponents) {
+					this.velocityComponents.style.left = (arrowBounds.left-containerBounds.left)+'px';
+					this.velocityComponents.style.bottom = Math.abs(arrowBounds.bottom-containerBounds.bottom)+'px';
+					this.velocityComponents.style.width = (arrowBounds.right-arrowBounds.left)+'px';
+					this.velocityComponents.style.height = Math.abs(arrowBounds.top-arrowBounds.bottom)+'px';
+					this.velocityX.innerHTML = Math.abs(Math.round(this.velocity.x));
+					this.velocityY.innerHTML = Math.round(this.velocity.y);
+				}
+				this.velocityMagnitude.innerHTML = Math.round(this.magnitude);
+			}
 
-				this.velocityX.innerHTML = Math.abs(Math.round(velocity.x));
-				this.velocityY.innerHTML = Math.round(velocity.y);
-				this.velocityMagnitude.innerHTML = Math.round(magnitude);
-
+			updateStatus() {
 				let prevRampsliding = this.rampsliding;
-				this.rampsliding = velocity.y > 180;
+				this.rampsliding = this.velocity.y > 180;
 				if (this.rampsliding !== prevRampsliding) {
 					if (this.rampsliding) {
 						this.root.classList.add('rampsliding');
@@ -317,6 +310,23 @@ Note that in the above diagram, the velocity loss that would occur from friction
 						}
 					}
 				}
+			}
+
+			update() {
+				this.updateValues();
+				this.updateSlope();
+				this.updateVelocity();
+				this.updateStatus();
+
+				if (this.onupdate) {
+					this.onupdate(this);
+				}
+			}
+
+			updateExcludeSlope() {
+				this.updateValues();
+				this.updateVelocity();
+				this.updateStatus();
 
 				if (this.onupdate) {
 					this.onupdate(this);
@@ -391,13 +401,13 @@ Note that in the above diagram, the velocity loss that would occur from friction
 			let magnitudeAnimDown = { duration: 2500, timing,
 				draw: function(progress) {
 					diagram.magnitude = 700 - 300 * Math.min(1, 1.5 * progress);
-					diagram.update();
+					diagram.updateExcludeSlope();
 				}
 			};
 			let magnitudeAnimUp = { duration: 2000, timing,
 				draw: function(progress) {
 					diagram.magnitude = 400 + 300 * progress;
-					diagram.update();
+					diagram.updateExcludeSlope();
 				}
 			};
 			let twentyToTen = { duration: 1500, timing,
@@ -433,7 +443,7 @@ Note that in the above diagram, the velocity loss that would occur from friction
 				let diff = startingVelocity.dot(delta);
 				diagram.magnitude = startingMagnitude + diff/300;
 				diagram.magnitude = Math.max(25, Math.min(2000, diagram.magnitude));
-				diagram.update();
+				diagram.updateExcludeSlope();
 			};
 			let resetDragging = function() {
 				diagram.root.removeEventListener('mousemove', dragHandler);
@@ -578,19 +588,19 @@ Note that in the above diagram, the velocity loss that would occur from friction
 			let start = { duration: 2000,
 				draw: function(progress) {
 					updateEnterAngle(45 - 45 * progress);
-					diagram.update();
+					diagram.updateExcludeSlope();
 				}
 			};
 			let up = { duration: 4000,
 				draw: function(progress) {
 					updateEnterAngle(85 * progress);
-					diagram.update();
+					diagram.updateExcludeSlope();
 				}
 			};
 			let down = { duration: 4000,
 				draw: function(progress) {
 					updateEnterAngle(85 - 85 * progress);
-					diagram.update();
+					diagram.updateExcludeSlope();
 				}
 			};
 			start.next = up;
@@ -613,21 +623,21 @@ Note that in the above diagram, the velocity loss that would occur from friction
 					element: stepsContainer.querySelector('.clip-velocity'),
 					fn: function() {
 						diagram.velocity = clipVelocity(diagram.velocity, diagram.getSurfaceNormal());
-						diagram.update();
+						diagram.updateExcludeSlope();
 					}
 				},
 				{
 					element: stepsContainer.querySelector('.move'),
 					fn: function() {
 						diagram.offset += diagram.velocity.length() / 75;
-						diagram.update();
+						diagram.updateExcludeSlope();
 					}
 				},
 				{
 					element: stepsContainer.querySelector('.gravity'),
 					fn: function() {
 						diagram.velocity.y -= parseInt(gravityInput.value);
-						diagram.update();
+						diagram.updateExcludeSlope();
 					}
 				}
 			];
@@ -755,24 +765,24 @@ Note that in the above diagram, the velocity loss that would occur from friction
 				draw: function(progress) {
 					diagram.updateEnterAngle(60 - 20 * progress);
 					diagram2.updateEnterAngle(60 - 20 * progress);
-					diagram.update();
-					diagram2.update();
+					diagram.updateExcludeSlope();
+					diagram2.updateExcludeSlope();
 				}
 			};
 			let up = { duration: 4000,
 				draw: function(progress) {
 					diagram.updateEnterAngle(40 + 40 * progress);
 					diagram2.updateEnterAngle(40 + 40 * progress);
-					diagram.update();
-					diagram2.update();
+					diagram.updateExcludeSlope();
+					diagram2.updateExcludeSlope();
 				}
 			};
 			let down = { duration: 4000,
 				draw: function(progress) {
 					diagram.updateEnterAngle(80 - 40 * progress);
 					diagram2.updateEnterAngle(80 - 40 * progress);
-					diagram.update();
-					diagram2.update();
+					diagram.updateExcludeSlope();
+					diagram2.updateExcludeSlope();
 				}
 			};
 			start.next = up;
