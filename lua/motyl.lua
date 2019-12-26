@@ -121,9 +121,11 @@ local function render(directory)
             if not data.site.categories[category] then
               data.site.categories[category] = {}
             end
+            assert(data.site.categoryMap[category], "missing category in motyl.conf: "..category)
 
             table.insert(data.site.categories[category], data.page)
-            table.insert(data.page.categoryDisplay, { category = category, url = "blog/categories/" .. data.site.categoryMap[category]})
+            local url = "blog/categories/" .. data.site.categoryMap[category]
+            table.insert(data.page.categoryDisplay, { category = category, url = url })
           end
 
           if data.page.featured then
