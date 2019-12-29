@@ -1,7 +1,3 @@
-*WIP* TODO: Finish up the Zig side of the tester and commit it to the Zua repo, then link to it where appropriate
-
----
-
 To learn more about both [Lua](https://lua.org) and [Zig](https://ziglang.org), I've started [writing a Lua 5.1 implementation in Zig](https://github.com/squeek502/zua) beginning with the lexer (i.e. separating a source file into tokens). Lua's lexer, however, does not have any test cases and the lexing API is not easily separated from the Lua parser. So, when writing test cases for a new, compatible implementation, it's hard to be certain you've covered all the edge cases. This is especially true for Lua, since any 8-bit value is technically a valid character in `.lua` source files (embedded `NUL`, other control characters, you name it).
 
 After writing some obvious test cases based on my reading of the Lua lexer's source code, I decided to try using fuzz testing to find any edge cases that I wasn't accounting for, and ended up with both some surprising and not-so-surprising results.
@@ -13,9 +9,9 @@ After writing some obvious test cases based on my reading of the Lua lexer's sou
 - **Input:** `local hello = "world"` &rarr; **Output:** `local <name> = <string> <eof>`
 - **Input:** `local hello = "world` &rarr; **Output:** `local <name> =` `[string "fuzz"]:1: unfinished string near '"world'`
 
-With these pairs of input/output files, I can simply make my lexer implementation generate similar output, and then compare that with Lua's for each input file. Any discrepancies (different tokens, different errors, errors at different locations, etc) is then an opportunity to figure out what's happening, write a minimal reproduction test case, and fix it. Once all of the discrepancies are ironed out, we can be reasonably sure that our implementation is compatible with the reference implementation.
+With these pairs of input/output files, I can simply make my lexer implementation [generate similar output](https://github.com/squeek502/zua/blob/4f6c1f5c3c54d71dd08bf19573f51054f672b566/src/lex.zig#L143-L191), and then [compare that with Lua's for each input file](https://github.com/squeek502/zua/blob/4f6c1f5c3c54d71dd08bf19573f51054f672b566/test/fuzz_lex.zig#L74). Any discrepancies (different tokens, different errors, errors at different locations, etc) is then an opportunity to figure out what's happening, write a minimal reproduction test case, and fix it. Once all of the discrepancies are ironed out, we can be reasonably sure that our implementation is compatible with the reference implementation.
 
-See [squeek502/fuzzing-lua](https://github.com/squeek502/fuzzing-lua) for the full lexer fuzzing implementation.
+See [squeek502/fuzzing-lua](https://github.com/squeek502/fuzzing-lua) for the full Lua lexer fuzzing implementation.
 
 ## The not-so-surprising results
 
