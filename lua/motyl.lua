@@ -146,8 +146,9 @@ end
 fsutil.mkdir("public")
 render("posts")
 
--- Sort post archives
+-- Sort post archives and featured list
 table.sort(data.site.posts, sortDates)
+table.sort(data.site.featured, sortDates)
 
 -- Renger pages
 render("pages")
