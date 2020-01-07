@@ -4,7 +4,7 @@ After writing some obvious test cases based on my reading of the Lua lexer's sou
 
 ## The setup
 
-[`libFuzzer`](https://llvm.org/docs/LibFuzzer.html) uses various techniques to generate a random set of inputs that maximizes the code coverage of the fuzz-tested code. After fuzzing for a while, I then took those generated inputs and ran them back through the Lua lexer, generating corresponding output files that consist of a list of the lexed tokens and the resulting error, if any. For example:
+[`libFuzzer`](https://llvm.org/docs/LibFuzzer.html) uses various techniques to generate a random set of inputs that maximizes the code coverage of the fuzz-tested code (in this case, the Lua lexer). After fuzzing for a while, I then took those generated inputs and ran them back through the Lua lexer, generating corresponding output files that consist of a list of the lexed tokens and the resulting error, if any. For example:
 
 - **Input:** `local hello = "world"` &rarr; **Output:** `local <name> = <string> <eof>`
 - **Input:** `local hello = "world` &rarr; **Output:** `local <name> =` `[string "fuzz"]:1: unfinished string near '"world'`
@@ -45,7 +45,7 @@ $ lua53 concat.lua
 lua53: concat.lua:1: ')' expected near '.'
 ```
 
-Because `.lua` source files rarely actually have embedded `NUL`s--especially outside of string literals--very few people have likely ever run into this particular edge case, but if absolute compatibility with a reference implementation is a goal, then such edge cases have to be taken into account. That's not a goal for my project, but it's still illustrative of the depth of the test cases that fuzzing can bubble up, and it has allowed me to make `check_next`-bug compatibility [an option in my implementation](https://github.com/squeek502/zua/blob/128b308feca8d1f2bb91861a95cbca3bf3a8f9fe/src/lex.zig#L26-L40).
+Because `.lua` source files rarely actually have embedded `NUL`s--especially outside of string literals--very few people have likely ever run into this particular edge case, but if absolute compatibility with a reference implementation is a goal, then such edge cases have to be taken into account. That's not a goal for my project, but it's still illustrative of the depth of the test cases that fuzzing can bubble up, and it has allowed me to make `check_next`-bug compatibility [an option in my implementation](https://github.com/squeek502/zua/blob/73ca0270c18f107ac8460bd668dc1be2c546c217/src/lex.zig#L191-L205).
 
 ## Links
 
