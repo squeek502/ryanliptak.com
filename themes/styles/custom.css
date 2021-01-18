@@ -91,6 +91,14 @@ a.info-link { border-bottom: 1px dashed #ddd; text-decoration: none; color: inhe
 a.info-link:hover { text-decoration: none; color: #444; background: #eee; position:relative; }
 a.info-link:hover:after { content: '?'; position:absolute; bottom: 1.6em; right: -.7em; border-radius: 100%; background: #f9f9f9; border: 1px dashed #ddd; width: 1.25em; height: 1.25em; font-size: .5em; line-height: 1.25em; text-align: center; opacity: 1; font-weight: normal; }
 
+blockquote {
+  border-left: .25rem solid #ddd;
+  margin-left: 0.5rem;
+  margin-right: 0.5rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
 .clear:after {clear:both;}
 .clear:before, .clear:after {content:"";display:table;}
 
