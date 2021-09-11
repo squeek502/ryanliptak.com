@@ -210,6 +210,19 @@ The only way I could come up with to do this is to separately parse the debug in
 
 where only the *real* uncovered line is prefixed with `!`.
 
+This also allows for outputting a useful summary, including "percentage covered" stats:
+
+```language-shellsession
+$ grindcov -- ./main hello
+Results for 1 source files generated in directory 'coverage'
+
+File                                 Covered LOC Executable LOC Coverage
+------------------------------------ ----------- -------------- --------
+main.zig                             6           7                85.71%
+------------------------------------ ----------- -------------- --------
+Total                                6           7                85.71%
+```
+
 <aside class="note"><p>Note: There's a big caveat here with the results from Zig binaries: since the Zig compiler only compiles functions that are actually called/referenced, completely unused functions don't contribute to the 'executable lines' total. Because of this, a file with one used function and many unused functions could potentially show up as 100% covered.</p>
 
 In other words, the results are only indicative of the coverage of *used* functions.</aside>
