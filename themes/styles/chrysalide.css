@@ -23,6 +23,7 @@ body {
 	color: #333;
 	font-family: Tahoma, Geneva, sans-serif;
 	*font-size: 1em;
+	-webkit-text-size-adjust: 100%;
 	line-height: 1.6;
 	margin: 0;
 	padding: 0;

@@ -135,6 +135,19 @@ h1 {
   margin-bottom: .25em;
 }
 
+pre,
+code,
+kbd,
+samp,
+tt{
+  font-family: SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+  font-size: 1em;
+}
+
+code {
+  font-size: 87.5%;
+}
+
 /* PrismJS 1.10.0
 http://prismjs.com/download.html?themes=prism-okaidia&languages=markup+css+clike+javascript */
 /**
@@ -142,14 +155,12 @@ http://prismjs.com/download.html?themes=prism-okaidia&languages=markup+css+clike
  * Loosely based on Monokai textmate theme by http://www.monokai.nl/
  * @author ocodia
  */
- 
+
 code[class*="language-"],
 pre[class*="language-"],
 :not(pre) > code {
   background: none;
   text-shadow: 0 1px white;
-  font-family: monospace;
-  font-size: 108%;
   text-align: left;
   white-space: pre;
   word-spacing: normal;
