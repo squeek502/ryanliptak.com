@@ -148,7 +148,8 @@ pre[class*="language-"],
 :not(pre) > code {
   background: none;
   text-shadow: 0 1px white;
-  font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+  font-family: monospace;
+  font-size: 108%;
   text-align: left;
   white-space: pre;
   word-spacing: normal;
