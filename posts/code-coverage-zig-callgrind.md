@@ -1,5 +1,7 @@
 <aside class="note">Note: Most of this is recounting the process by which I arrived at being able to generate code coverage information for Zig code. If you just want to see the end result, check out the [grindcov repository](https://github.com/squeek502/grindcov).</aside>
 
+<aside class="update"><p>**Update 2021-09-13:** Since writing this post, I was made aware of [kcov](https://github.com/SimonKagstrom/kcov) which is a more robust and *much* faster tool that can generate coverage information for Zig binaries. I've written a [follow-up post that describes more generally how coverage tools like kcov can be used with Zig on zig.news](https://zig.news/squeek502/code-coverage-for-zig-1dk1).</p></aside>
+
 ---
 
 When writing an audio metadata (ID3v2, etc) parser in [Zig](https://ziglang.org/), I wrote some tests to compare the output of some existing metadata parsers to my parser for all the files in my music directory. Whenever there was a discrepancy, I figured out what was happening and fixed my parser as necessary.

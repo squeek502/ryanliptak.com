@@ -104,6 +104,18 @@ header { margin-top: 15px; }
 .note pre[class*="language-"] {
   background: #e7e7e7;
 }
+aside.update {
+  border-left: .25rem solid;
+  border-right: .25rem solid;
+  border-color: #79C;
+  background-color: #f4f4f4;
+  margin-left: 0.5rem;
+  margin-right: 0.5rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
 
 details summary { cursor: pointer; }
 
