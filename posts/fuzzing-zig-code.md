@@ -222,7 +222,7 @@ With this, running
 zig build fuzz
 ```
 
-Would build an executable named `fuzz` and put it into 'bin' install path (`zig-out/bin` by default) that can then be used with `afl-fuzz` (note that the compile step requires `afl-clang-lto` to be installed on the system).
+Would build an executable named `fuzz` and put it into the 'bin' install path (`zig-out/bin` by default) that can then be used with `afl-fuzz` (note that the compile step requires `afl-clang-lto` to be installed on the system).
 
 It's also possible with this setup to easily build a second Zig executable (with the same code) for debugging the crashes as mentioned above. To do this, you could add the following to the `build.zig`:
 
