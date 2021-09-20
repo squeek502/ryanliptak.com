@@ -1,6 +1,6 @@
 After [using code coverage information and real-world files](https://www.ryanliptak.com/blog/code-coverage-zig-callgrind/) to improve an audio metadata parser I am writing in [Zig](https://ziglang.org/), the next step was to fuzz test it in order to ensure that crashes, memory leaks, etc were ironed out as much as possible.
 
-The problem was that I had no idea how to fuzz Zig code. While Zig uses LLVM and therefore in theory has access to [`libFuzzer`](https://llvm.org/docs/LibFuzzer.html), the neccessary integration with [`SanitizerCoverage`](https://clang.llvm.org/docs/SanitizerCoverage.html) has [yet to be implemented](https://github.com/ziglang/zig/issues/5484) (see also [this comment on a closed PR](https://github.com/ziglang/zig/pull/5956#issuecomment-667610012)), so I figured I would try to to find another avenue in the meantime.
+The problem was that I had no idea how to fuzz Zig code. While Zig uses LLVM and therefore in theory has access to [`libFuzzer`](https://llvm.org/docs/LibFuzzer.html), the necessary integration with [`SanitizerCoverage`](https://clang.llvm.org/docs/SanitizerCoverage.html) has [yet to be implemented](https://github.com/ziglang/zig/issues/5484) (see also [this comment on a closed PR](https://github.com/ziglang/zig/pull/5956#issuecomment-667610012)), so I figured I would try to to find another avenue in the meantime.
 
 ## Treating zig code as a black box
 
@@ -45,7 +45,7 @@ And with that, I was off to the races. There was a *heavy* runtime penalty to ru
 - I wasn't protecting against out-of-bounds reads when checking UTF-16 BOMs
 - A few more data size underflow/index out-of-bounds protections were needed elsewhere
 - I wasn't handling malformed extended ID3v2 headers safely
-- [There was a bug in the Zig standard libary where the `std.unicode` functions that allocated memory would fail to free the memory if they returned an error](https://github.com/ziglang/zig/pull/9776)
+- [There was a bug in the Zig standard library where the `std.unicode` functions that allocated memory would fail to free the memory if they returned an error](https://github.com/ziglang/zig/pull/9776)
 
 Despite the success, I felt that things could be improved.
 
