@@ -5,4 +5,5 @@ keywords: fuzzing, lua, zig
 categories:
 - Programming
 - Lua
+- Fuzzing
 featured: true

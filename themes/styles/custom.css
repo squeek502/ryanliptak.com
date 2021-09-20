@@ -117,6 +117,9 @@ aside.update {
   padding-bottom: 0.25rem;
 }
 
+mark.success { background-color: #ECFFCFFF; }
+mark.failure { background-color: #FFE8DEFF; }
+
 details summary { cursor: pointer; }
 
 a.info-link { border-bottom: 1px dashed #ddd; text-decoration: none; color: inherit; }
