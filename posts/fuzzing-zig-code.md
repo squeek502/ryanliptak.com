@@ -181,7 +181,7 @@ $ ./fuzz < 'output/default/crashes/id:000001,sig:06,src:000000,time:8,op:havoc,r
 thread 2903735 panic: attempt to unwrap error: BadInput
 ```
 
-<aside class="update"><p>Note: An earlier version of this post recommended `zig build-obj` to create a `.o` file instead of a static library, but the `build-obj` method has issues with `undefined symbol: __zig_probe_stack` linker errors in certain situations. The `build-lib` method recommended the current post has all the same benefits without the potential for those linker errors.</p></aside>
+<aside class="update"><p>Note: An earlier version of this post recommended `zig build-obj` to create a `.o` file instead of a static library, but the `build-obj` method has issues with `undefined symbol: __zig_probe_stack` linker errors in certain situations. The `build-lib` method recommended in the current post has all the same benefits without the potential for those linker errors.</p></aside>
 
 ### Integrating with `build.zig`
 
