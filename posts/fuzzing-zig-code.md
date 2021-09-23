@@ -174,9 +174,9 @@ total execs : 113k │ total crashes : 13.5k (2 unique)
 We can also verify that the resulting crash files trigger the buggy code as expected:
 
 ```language-shellsession
-$ cat 'output/default/crashes/id:000000,sig:06,src:000000,time:2,op:havoc,rep:4' | ./fuzz
+$ ./fuzz < 'output/default/crashes/id:000000,sig:06,src:000000,time:2,op:havoc,rep:4'
 error(gpa): memory address 0x7ffff7ffb000 leaked: 
-$ cat 'output/default/crashes/id:000001,sig:06,src:000000,time:8,op:havoc,rep:8' | ./fuzz
+$ ./fuzz < 'output/default/crashes/id:000001,sig:06,src:000000,time:8,op:havoc,rep:8'
 thread 2903735 panic: attempt to unwrap error: BadInput
 ```
 
@@ -239,7 +239,7 @@ fuzz_compile_run.dependOn(&install_fuzz_debug_exe.step);
 This will build a `fuzz-debug` executable and install it next to the `fuzz` executable. When the fuzzer detects a bug, you can then get a proper stack trace by running the offending input through `fuzz-debug`:
 
 ```language-shellsession
-$ cat 'output/default/crashes/id:000000,sig:06,src:000000,time:2,op:havoc,rep:4' | ./zig-out/bin/fuzz-debug
+$ ./zig-out/bin/fuzz-debug < 'output/default/crashes/id:000000,sig:06,src:000000,time:2,op:havoc,rep:4'
 error(gpa): memory address 0x7ffff7ff8000 leaked: 
 /home/ryan/Programming/zig/tmp/fuzz/fuzz.zig:25:36: 0x205ec3 in main (fuzz-debug)
             _ = try allocator.alloc(u8, 10);
