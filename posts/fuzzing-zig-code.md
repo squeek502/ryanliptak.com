@@ -254,6 +254,10 @@ A complete example can be found here:
 
 - [https://github.com/squeek502/zig-fuzzing-example](https://github.com/squeek502/zig-fuzzing-example)
 
+And an example that fuzz tests parts of the Zig standard library can be found here:
+
+- [https://github.com/squeek502/zig-std-lib-fuzzing](https://github.com/squeek502/zig-std-lib-fuzzing)
+
 ## Wrapping up
 
 Hopefully the methods detailed here can serve as a stop-gap until Zig gets more fuzzing capabilities built-in. Funnily enough, the slower FRIDA mode I used initially may have caught all of the bugs in my audio metadata parsing library (or at least all of the low-hanging ones), as after the speedups from the static library/object file methods I haven't been able to trigger any more crashes.
