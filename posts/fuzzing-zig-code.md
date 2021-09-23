@@ -110,7 +110,7 @@ Instead of linking the Zig code in as a static library, I wondered if it was pos
 
 - Export a `callconv(.C)` main symbol (i.e. `export fn main()`) to act as the entry point (without this, `afl-clang-lto` will compain about an `undefined symbol: main`)
 - Call your Zig code from the exported main
-- And use `zig build-obj -lto` to build the object file
+- And use `zig build-obj -flto` to build the object file
 
 Here's an example with some contrived and intentionally buggy code:
 
