@@ -1,3 +1,5 @@
+<aside class="update">*Updated 2021-09-23* ([changelog](https://github.com/squeek502/ryanliptak.com/commits/master/posts/fuzzing-zig-code.md))</aside>
+
 After [using code coverage information and real-world files](https://www.ryanliptak.com/blog/code-coverage-zig-callgrind/) to improve an audio metadata parser I am writing in [Zig](https://ziglang.org/), the next step was to fuzz test it in order to ensure that crashes, memory leaks, etc were ironed out as much as possible.
 
 The problem was that I had no idea how to fuzz Zig code. While Zig uses LLVM and therefore in theory has access to [`libFuzzer`](https://llvm.org/docs/LibFuzzer.html), the necessary integration with [`SanitizerCoverage`](https://clang.llvm.org/docs/SanitizerCoverage.html) has [yet to be implemented](https://github.com/ziglang/zig/issues/5484) (see also [this comment on a closed PR](https://github.com/ziglang/zig/pull/5956#issuecomment-667610012)), so I figured I would try to to find another avenue in the meantime.
@@ -104,13 +106,12 @@ $ afl-fuzz -i path/to/inputs -o path/to/outputs -- ./fuzz
 
 This *hugely* improved execution speed--it went from around 500/sec to around 9000/sec. This seemed great, but I still thought there were some unnecessary steps involved.
 
-## Treating zig code as an object
+## Skipping the C code
 
-Instead of linking the Zig code in as a static library, I wondered if it was possible to compile the Zig code to an object file and then use `afl-clang-lto` to transform the object file into an executable, thereby getting the instrumentation without having to compile any C code. It turns out this is very possible if you:
+Instead of linking the Zig code with C code, I wondered if it was possible to compile *only* the Zig code and then use `afl-clang-lto` to transform the compiled Zig into an executable, thereby getting the instrumentation without having to compile any C code. It turns out this is very possible if you:
 
 - Export a `callconv(.C)` main symbol (i.e. `export fn main()`) to act as the entry point (without this, `afl-clang-lto` will compain about an `undefined symbol: main`)
 - Call your Zig code from the exported main
-- And use `zig build-obj -flto` to build the object file
 
 Here's an example with some contrived and intentionally buggy code:
 
@@ -157,8 +158,8 @@ pub fn main() !void {
 To build:
 
 ```language-shellsession
-$ zig build-obj -flto fuzz.zig
-$ afl-clang-lto -o fuzz fuzz.o
+$ zig build-lib -static -fcompiler-rt -flto fuzz.zig
+$ afl-clang-lto -o fuzz libfuzz.a
 ```
 
 And then run the fuzzer:
@@ -180,7 +181,7 @@ $ ./fuzz < 'output/default/crashes/id:000001,sig:06,src:000000,time:8,op:havoc,r
 thread 2903735 panic: attempt to unwrap error: BadInput
 ```
 
-<aside class="note"><p>Note: For some reason this method doesn't work if you link libc, as you start getting `undefined symbol: __zig_probe_stack` linker errors. Normally this would be fixed by `-fcompiler-rt` but it seems like there might currently be a bug with `-fcompiler-rt` when used with `zig build-obj`. If you need to link libc for your fuzz tests, you'll probably need to (for now at least) use the 'compile as a static library' method talked about previously instead.</p></aside>
+<aside class="update"><p>Note: An earlier version of this post recommended `zig build-obj` to create a `.o` file instead of a static library, but the `build-obj` method has issues with `undefined symbol: __zig_probe_stack` linker errors in certain situations. The `build-lib` method recommended the current post has all the same benefits without the potential for those linker errors.</p></aside>
 
 ### Integrating with `build.zig`
 
@@ -190,21 +191,20 @@ There are probably better ways to do this, but here's what I was able to come up
 const std = @import("std");
 
 pub fn build(b: *std.build.Builder) !void {
-    // The object file
-    const fuzz_obj = b.addObject("fuzz-obj", "fuzz.zig");
-    fuzz_obj.setBuildMode(.Debug);
-    fuzz_obj.want_lto = true;
+    // The library
+    const fuzz_lib = b.addStaticLibrary("fuzz-lib", "fuzz.zig");
+    fuzz_lib.setBuildMode(.Debug);
+    fuzz_lib.want_lto = true;
+    fuzz_lib.bundle_compiler_rt = true;
 
     // Setup the output name
     const fuzz_executable_name = "fuzz";
-    const fuzz_exe_path = try std.fs.path.join(b.allocator, &[_][]const u8{ b.cache_root, fuzz_executable_name });
+    const fuzz_exe_path = try std.fs.path.join(b.allocator, &.{ b.cache_root, fuzz_executable_name });
 
-    // We want `afl-clang-lto -o path/to/output path/to/object.o`
-    const fuzz_compile = b.addSystemCommand(&[_][]const u8{ "afl-clang-lto", "-o" });
-    // Add the output path to afl-clang-lto's args
-    fuzz_compile.addArg(fuzz_exe_path);
-    // Add the path to the object file to afl-clang-lto's args
-    fuzz_compile.addArtifactArg(fuzz_obj);
+    // We want `afl-clang-lto -o path/to/output path/to/library`
+    const fuzz_compile = b.addSystemCommand(&.{ "afl-clang-lto", "-o", fuzz_exe_path });
+    // Add the path to the library file to afl-clang-lto's args
+    fuzz_compile.addArtifactArg(fuzz_lib);
 
     // Install the cached output to the install 'bin' path
     const fuzz_install = b.addInstallBinFile(.{ .path = fuzz_exe_path }, fuzz_executable_name);
