@@ -1,6 +1,6 @@
 <aside class="update">*Updated 2021-09-23* ([changelog](https://github.com/squeek502/ryanliptak.com/commits/master/posts/fuzzing-zig-code.md))</aside>
 
-After [using code coverage information and real-world files](https://www.ryanliptak.com/blog/code-coverage-zig-callgrind/) to improve an audio metadata parser I am writing in [Zig](https://ziglang.org/), the next step was to fuzz test it in order to ensure that crashes, memory leaks, etc were ironed out as much as possible.
+After [using code coverage information and real-world files](https://www.ryanliptak.com/blog/code-coverage-zig-callgrind/) to improve an [audio metadata parser](https://github.com/squeek502/audiometa) I am writing in [Zig](https://ziglang.org/), the next step was to fuzz test it in order to ensure that crashes, memory leaks, etc were ironed out as much as possible.
 
 The problem was that I had no idea how to fuzz Zig code. While Zig uses LLVM and therefore in theory has access to [`libFuzzer`](https://llvm.org/docs/LibFuzzer.html), the necessary integration with [`SanitizerCoverage`](https://clang.llvm.org/docs/SanitizerCoverage.html) has [yet to be implemented](https://github.com/ziglang/zig/issues/5484) (see also [this comment on a closed PR](https://github.com/ziglang/zig/pull/5956#issuecomment-667610012)), so I figured I would try to to find another avenue in the meantime.
 

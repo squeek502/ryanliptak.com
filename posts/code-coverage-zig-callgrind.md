@@ -4,7 +4,7 @@
 
 ---
 
-When writing an audio metadata (ID3v2, etc) parser in [Zig](https://ziglang.org/), I wrote some tests to compare the output of some existing metadata parsers to my parser for all the files in my music directory. Whenever there was a discrepancy, I figured out what was happening and fixed my parser as necessary.
+When writing an [audio metadata (ID3v2, etc) parser](https://github.com/squeek502/audiometa) in [Zig](https://ziglang.org/), I wrote some tests to compare the output of some existing metadata parsers to my parser for all the files in my music directory. Whenever there was a discrepancy, I figured out what was happening and fixed my parser as necessary.
 
 This worked out great, but I was lazy while doing it and didn't create test cases for each new fix that I had to add. After eventually becoming compliant-enough with the output of other metadata parsers, my resulting code still had very few self-contained test cases. I *had* kept a set of files that I knew (at one point or another) triggered some bug in my parser, but I also knew that the set of files was unnecessarily large--there were many files that were only novel to a previous/buggy version of the parser, so they wouldn't all be good tests for the current version.
 
