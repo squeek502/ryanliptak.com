@@ -311,7 +311,7 @@ pre[class*="language-"] {
 @media (prefers-color-scheme: dark) {
   body {
     background: #191919;
-    color: #eee;
+    color: #e0e0e0;
   }
 
   footer {
@@ -345,8 +345,7 @@ pre[class*="language-"] {
     background-color: #111;
   }
   aside.update, .note {
-    background-color: #252525;
-    color: #fff;
+    background-color: #222;
   }
   .note {
     border-color: #444;
@@ -359,7 +358,7 @@ pre[class*="language-"] {
   .note pre[class*="language-"],
   .update > code, .update :not(pre) > code,
   .update pre[class*="language-"] {
-    background: #222;
+    background: #1a1a1a;
   }
 
   mark { color: inherit; }
@@ -374,6 +373,7 @@ pre[class*="language-"] {
   pre[class*="language-"],
   :not(pre) > code {
     text-shadow: 0 1px black;
+    color: #c1c1c1;
   }
 
   pre[class*="language-"]::-moz-selection, pre[class*="language-"] ::-moz-selection,
