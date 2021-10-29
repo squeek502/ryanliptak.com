@@ -129,7 +129,9 @@ My solution for the second part was to:
 
 This allows the allocation index to be both consistent *and* seemingly random, in that the allocation index will vary a lot between different inputs, so in theory we should get decent coverage fairly quickly.
 
-<aside class="update"><p>**Note:** While writing this, I realized that it would be possible to run the parser on the input once without the `FailingAllocator`, and then use the resulting 'maximum' allocation index as the upper bound for a loop where you test with a `FailingAllocator` on each possible allocation index (i.e. this would end up being similar to something like [FAINT](https://github.com/misc0110/faint/)). This would be *much* more comprehensive for each input, but would also come at a heavy runtime cost per-input. I'm not familiar enough with the inner-workings of fuzzing to know which strategy would get the best results.</p></aside>
+<aside class="update"><p>**Note:** While writing this, I realized that it would be possible to run the parser on the input once without the `FailingAllocator`, and then use the resulting 'maximum' allocation index as the upper bound for a loop where you test with a `FailingAllocator` on each possible allocation index (i.e. this would end up being similar to something like [FAINT](https://github.com/misc0110/faint/)). This would be *much* more comprehensive for each input, but would also come at a heavy runtime cost per-input. I'm not familiar enough with the inner-workings of fuzzing to know which strategy would get the best results.</p>
+
+**Update 2021-10-29**: Turns out that Zig's parser tests [use this exact strategy already](https://github.com/ziglang/zig/blob/ee038df7e2782d336e8d7cdb8619c39d85c027bb/lib/std/zig/parser_test.zig#L5306-L5351).</aside>
 
 My fuzzer's main function ended up looking something like:
 
