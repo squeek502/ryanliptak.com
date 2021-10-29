@@ -814,6 +814,11 @@ Note that in the above diagram, the velocity loss that would occur from friction
 			background-color: #eee;
 			overflow: hidden;
 		}
+		@media (prefers-color-scheme: dark) {
+		.rampsliding-diagram {
+			background-color: #111;
+		}
+		}
 		.rampsliding-diagram .slope {
 			position: absolute;
 			bottom: 30px;
@@ -823,6 +828,11 @@ Note that in the above diagram, the velocity loss that would occur from friction
 			background-color: black;
 			transform-origin: 100% 100%;
 			transform: rotate(30deg);
+		}
+		@media (prefers-color-scheme: dark) {
+		.rampsliding-diagram .slope {
+			background-color: #ddd;
+		}
 		}
 		.rampsliding-diagram .slope-angle {
 			position: absolute;
@@ -850,6 +860,11 @@ Note that in the above diagram, the velocity loss that would occur from friction
 			z-index: 0;
 			pointer-events: none;
 		}
+		@media (prefers-color-scheme: dark) {
+		.rampsliding-diagram .slope-angle-circle > div {
+			border-color: rgba(255,255,255,0.5);
+		}
+		}
 		.rampsliding-diagram .ground {
 			position: absolute;
 			bottom: 30px;
@@ -857,6 +872,11 @@ Note that in the above diagram, the velocity loss that would occur from friction
 			width: 400px;
 			height: 1px;
 			background-color: rgba(0,0,0,0.5);
+		}
+		@media (prefers-color-scheme: dark) {
+		.rampsliding-diagram .ground {
+			background-color: rgba(255,255,255,0.5);
+		}
 		}
 		#clipvelocity-addendum-1.rampsliding-diagram,
 		#clipvelocity-addendum-2.rampsliding-diagram {
@@ -870,6 +890,12 @@ Note that in the above diagram, the velocity loss that would occur from friction
 			width: 200px;
 			height: 5px;
 			background-color: black;
+		}
+		@media (prefers-color-scheme: dark) {
+		#clipvelocity-addendum-1.rampsliding-diagram .flat,
+		#clipvelocity-addendum-2.rampsliding-diagram .flat {
+			background-color: #ddd;
+		}
 		}
 		#clipvelocity-addendum-1.rampsliding-diagram .slope,
 		#clipvelocity-addendum-2.rampsliding-diagram .slope {
@@ -927,6 +953,11 @@ Note that in the above diagram, the velocity loss that would occur from friction
 			background-color: black;
 			z-index: 5;
 		}
+		@media (prefers-color-scheme: dark) {
+		.rampsliding-diagram .velocity-arrow {
+			background-color: #ddd;
+		}
+		}
 		.rampsliding-diagram.rampsliding .velocity-arrow {
 			background-color: #69A9CE;
 		}
@@ -941,6 +972,11 @@ Note that in the above diagram, the velocity loss that would occur from friction
 			left: 0px;
 			top: -4px;
 			z-index: 5;
+		}
+		@media (prefers-color-scheme: dark) {
+		.rampsliding-diagram .velocity-arrow::after { 
+			border-right-color: #ddd;
+		}
 		}
 		.rampsliding-diagram.rampsliding .velocity-arrow::after {
 			border-right-color: #69A9CE;
@@ -968,6 +1004,11 @@ Note that in the above diagram, the velocity loss that would occur from friction
 			border-color: rgba(0,0,0,.5);
 			z-index: 4;
 		}
+		@media (prefers-color-scheme: dark) {
+		.rampsliding-diagram .velocity-components {
+			border-color: rgba(255,255,255,.5);
+		}
+		}
 		.rampsliding-diagram .velocity-x {
 			position:absolute;
 			text-align: center;
@@ -992,26 +1033,6 @@ Note that in the above diagram, the velocity loss that would occur from friction
 			position:absolute;
 			left: 0px; right: 0px; top: 1em;
 			text-align: center;
-		}
-		.rampsliding-diagram .controls {
-			padding: 0.5em; margin: 0.5em;
-			cursor: pointer;
-			background-color: rgba(0,0,0,.1);
-			display: inline-block;
-			-webkit-touch-callout: none;
-			-webkit-user-select: none;
-			-khtml-user-select: none;
-			-moz-user-select: none;
-			-ms-user-select: none;
-			user-select: none;
-		}
-		.rampsliding-diagram .controls.step {
-			position: absolute;
-			left: 0; top: 0;
-		}
-		.rampsliding-diagram .controls.grav {
-			position: absolute;
-			left: 0; top: 45px;
 		}
 		.rampsliding-diagram .steps {
 			position: absolute;
@@ -1084,6 +1105,11 @@ Note that in the above diagram, the velocity loss that would occur from friction
 			cursor: pointer;
 			opacity: 0.66;
 		}
+		@media (prefers-color-scheme: dark) {
+		.rampsliding-diagram .slope-angle-lock {
+			background-color: #333;
+		}
+		}
 		.rampsliding-diagram .slope-angle-lock:hover {
 			opacity: 1;
 		}
@@ -1143,6 +1169,14 @@ Note that in the above diagram, the velocity loss that would occur from friction
 		}
 		.rampsliding-diagram .velocity-arrow-enter-container .velocity-arrow::after {
 			border-right-color: #484848;
+		}
+		@media (prefers-color-scheme: dark) {
+		.rampsliding-diagram .velocity-arrow-enter-container .velocity-arrow {
+			background-color: #81798B;
+		}
+		.rampsliding-diagram .velocity-arrow-enter-container .velocity-arrow::after {
+			border-right-color: #81798B;
+		}
 		}
 		.rampsliding-diagram .velocity-arrow-intermediate-container {
 			position: absolute;

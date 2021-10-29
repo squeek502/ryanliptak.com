@@ -271,7 +271,7 @@ pre[class*="language-"] {
 .language-css .token.string,
 .style .token.string {
   color: #9a6e3a;
-  background: hsla(0, 0%, 100%, .5);
+  /*background: hsla(0, 0%, 100%, .5);*/
 }
 
 .token.atrule,
@@ -305,4 +305,90 @@ pre[class*="language-"] {
 
 .token.entity {
   cursor: help;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #191919;
+    color: #eee;
+  }
+
+  footer {
+    color: #aaa;
+  }
+
+  hr {
+    border: 0;
+    border-top: 1px solid #000;
+  }
+
+  :link {
+    color: #2B80FF;
+  }
+  :visited {
+    color: #836E98;
+  }
+
+  .project-list > li {
+    border-color: #000;
+    background-color: #111;
+  }
+  .home-card > .stack > .action {
+    border-color: #111111;
+  }
+  .home-card > .stack > a.content:hover {
+    color: #ddd;
+  }
+  .blog {
+    border-color: #000;
+    background-color: #111;
+  }
+  aside.update, .note {
+    background-color: #252525;
+    color: #fff;
+  }
+  .note {
+    border-color: #444;
+  }
+  aside.update {
+    border-color: #248;
+  }
+  /* Inline code within a note */
+  .note > code, .note :not(pre) > code,
+  .note pre[class*="language-"],
+  .update > code, .update :not(pre) > code,
+  .update pre[class*="language-"] {
+    background: #222;
+  }
+
+  mark { color: inherit; }
+  mark.success { background-color: #1B3005FF; }
+  mark.failure { background-color: #1E0303FF; }
+
+  blockquote {
+    border-color: #444;
+  }
+
+  code[class*="language-"],
+  pre[class*="language-"],
+  :not(pre) > code {
+    text-shadow: 0 1px black;
+  }
+
+  pre[class*="language-"]::-moz-selection, pre[class*="language-"] ::-moz-selection,
+  code[class*="language-"]::-moz-selection, code[class*="language-"] ::-moz-selection {
+    text-shadow: none;
+    background: #204A87;
+  }
+
+  pre[class*="language-"]::selection, pre[class*="language-"] ::selection,
+  code[class*="language-"]::selection, code[class*="language-"] ::selection {
+    text-shadow: none;
+    background: #204A87;
+  }
+
+  :not(pre) > code,
+  pre[class*="language-"] {
+    background: #111;
+  }
 }
