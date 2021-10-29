@@ -82,7 +82,7 @@ const MaxSizeAllocator = struct {
 which is then able to be used in the fuzzer implementation:
 
 ```language-zig
-// default to 4mb minimum just incase we get very small files that need to allocate
+// default to 4kb minimum just in case we get very small files that need to allocate
 // fairly large sizes for things like ArrayList(ID3v2Metadata)
 const max_allocation_size = std.math.max(4096, data.len * 10);
 var max_size_allocator = MaxSizeAllocator.init(allocator, max_allocation_size);
