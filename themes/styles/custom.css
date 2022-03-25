@@ -84,6 +84,8 @@ ul.social-links li a svg { display: inline-block; width: 32px; height: 32px; fil
 }
 .blog > h3 { margin: 0; }
 
+.post-feedback { font-style: italic; }
+
 header { margin-top: 15px; }
 .header-menu { list-style: none; padding:0; margin:0; display: inline-block; }
 .header-menu > li { display: inline-block; margin-right: 10px; }
