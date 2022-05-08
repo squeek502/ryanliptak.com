@@ -1,3 +1,5 @@
+<aside class="update">*Last updated 2022-05-08* ([changelog](https://github.com/squeek502/ryanliptak.com/commits/master/posts/improving-fuzz-testing-with-zig-allocators.md))</aside>
+
 After [finding a method for fuzz testing Zig code](https://www.ryanliptak.com/blog/fuzzing-zig-code/) and using it to iron out some possible crashes in [an audio metadata parser](https://github.com/squeek502/audiometa) I'm writing in [Zig](https://ziglang.org/), I have been experimenting with different ways to use fuzz testing to improve my library in other dimensions.
 
 ## Fuzzing to optimize worst-case performance
@@ -42,39 +44,40 @@ In order to be certain that all bugs of this nature are ironed out, I thought it
 /// Allocator that checks that individual allocations never go over
 /// a certain size, and panics if they do
 const MaxSizeAllocator = struct {
-    allocator: Allocator,
-    parent_allocator: *Allocator,
+    parent_allocator: Allocator,
     max_alloc_size: usize,
 
     const Self = @This();
 
-    pub fn init(parent_allocator: *Allocator, max_alloc_size: usize) Self {
+    pub fn init(parent_allocator: Allocator, max_alloc_size: usize) Self {
         return .{
-            .allocator = Allocator{
-                .allocFn = alloc,
-                .resizeFn = resize,
-            },
             .parent_allocator = parent_allocator,
             .max_alloc_size = max_alloc_size,
         };
     }
 
-    fn alloc(allocator: *Allocator, len: usize, ptr_align: u29, len_align: u29, ra: usize) error{OutOfMemory}![]u8 {
-        const self = @fieldParentPtr(Self, "allocator", allocator);
+    pub fn allocator(self: *Self) Allocator {
+        return Allocator.init(self, alloc, resize, free);
+    }
+
+    fn alloc(self: *Self, len: usize, ptr_align: u29, len_align: u29, ra: usize) error{OutOfMemory}![]u8 {
         if (len > self.max_alloc_size) {
             std.debug.print("trying to allocate size: {}\n", .{len});
             @panic("allocation exceeds max alloc size");
         }
-        return self.parent_allocator.allocFn(self.parent_allocator, len, ptr_align, len_align, ra);
+        return self.parent_allocator.rawAlloc(len, ptr_align, len_align, ra);
     }
 
-    fn resize(allocator: *Allocator, buf: []u8, buf_align: u29, new_len: usize, len_align: u29, ra: usize) error{OutOfMemory}!usize {
-        const self = @fieldParentPtr(Self, "allocator", allocator);
+    fn resize(self: *Self, buf: []u8, buf_align: u29, new_len: usize, len_align: u29, ra: usize) ?usize {
         if (new_len > self.max_alloc_size) {
             std.debug.print("trying to resize to size: {}\n", .{new_len});
             @panic("allocation exceeds max alloc size");
         }
-        return self.parent_allocator.resizeFn(self.parent_allocator, buf, buf_align, new_len, len_align, ra);
+        return self.parent_allocator.rawResize(buf, buf_align, new_len, len_align, ra);
+    }
+
+    fn free(self: *Self, buf: []u8, buf_align: u29, ret_addr: usize) void {
+        return self.parent_allocator.rawFree(buf, buf_align, ret_addr);
     }
 };
 ```
@@ -87,7 +90,7 @@ which is then able to be used in the fuzzer implementation:
 const max_allocation_size = std.math.max(4096, data.len * 10);
 var max_size_allocator = MaxSizeAllocator.init(allocator, max_allocation_size);
 
-var metadata = try audiometa.metadata.readAll(&max_size_allocator.allocator, &stream_source);
+var metadata = try audiometa.metadata.readAll(max_size_allocator.allocator(), &stream_source);
 defer metadata.deinit();
 ```
 
@@ -139,7 +142,7 @@ My fuzzer's main function ended up looking something like:
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 // this will check for leaks at the end of the program
 defer std.debug.assert(gpa.deinit() == false);
-const gpa_allocator = &gpa.allocator;
+const gpa_allocator = gpa.allocator();
 
 const stdin = std.io.getStdIn();
 const data = try stdin.readToEndAlloc(gpa_allocator, std.math.maxInt(usize));
@@ -157,7 +160,7 @@ while (true) : (should_have_failed = true) {
     // from the start each iteration
     var stream_source = std.io.StreamSource{ .buffer = std.io.fixedBufferStream(data) };
 
-    var metadata = audiometa.metadata.readAll(&failing_allocator.allocator, &stream_source) catch |err| switch (err) {
+    var metadata = audiometa.metadata.readAll(failing_allocator.allocator(), &stream_source) catch |err| switch (err) {
         // if we hit OutOfMemory, then we can break and check for leaks
         error.OutOfMemory => break,
         else => return err,

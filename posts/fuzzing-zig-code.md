@@ -1,4 +1,4 @@
-<aside class="update">*Updated 2021-09-23* ([changelog](https://github.com/squeek502/ryanliptak.com/commits/master/posts/fuzzing-zig-code.md))</aside>
+<aside class="update">*Last updated 2022-05-08* ([changelog](https://github.com/squeek502/ryanliptak.com/commits/master/posts/fuzzing-zig-code.md))</aside>
 
 After [using code coverage information and real-world files](https://www.ryanliptak.com/blog/code-coverage-zig-callgrind/) to improve an [audio metadata parser](https://github.com/squeek502/audiometa) I am writing in [Zig](https://ziglang.org/), the next step was to fuzz test it in order to ensure that crashes, memory leaks, etc were ironed out as much as possible.
 
@@ -17,7 +17,7 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     // this will check for leaks and crash the program if it finds any
     defer std.debug.assert(gpa.deinit() == false);
-    const allocator = &gpa.allocator;
+    const allocator = gpa.allocator();
 
     // Read the data from stdin
     const stdin = std.io.getStdIn();
@@ -130,7 +130,7 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     // this will check for leaks and crash the program if it finds any
     defer std.debug.assert(gpa.deinit() == false);
-    const allocator = &gpa.allocator;
+    const allocator = gpa.allocator();
 
     const stdin = std.io.getStdIn();
     const data = try stdin.readToEndAlloc(allocator, std.math.maxInt(usize));
