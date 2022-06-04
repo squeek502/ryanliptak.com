@@ -75,6 +75,7 @@ ul.social-links li a img, ul.social-links li a svg { margin:0; margin-right: .25
 ul.social-links li a svg { display: inline-block; width: 32px; height: 32px; fill: white; }
 
 .latest-blog > h2 { margin: 0; font-size: 100%; font-weight: normal; font-style: italic; }
+.latest-blog > .blog { margin-top: 0.5rem; margin-bottom: 0.5rem; }
 .blog { 
   margin: 0.5rem 0;
   border: 1px solid #ddd;
@@ -84,7 +85,15 @@ ul.social-links li a svg { display: inline-block; width: 32px; height: 32px; fil
 }
 .blog > h3 { margin: 0; }
 
-.post-feedback { font-style: italic; }
+h1, h2, h3, h4, h5, h6 {
+  font-weight: normal;
+}
+
+.blog-post h2, .blog-post h3, .blog-post h4, .blog-post h5, .blog-post h6 {
+  border-bottom: 1px solid rgba(0,0,0,.25);
+}
+
+.post-feedback { font-style: italic; margin-top: 2rem; }
 
 header { margin-top: 15px; }
 .header-menu { list-style: none; padding:0; margin:0; display: inline-block; }
@@ -345,6 +354,9 @@ pre[class*="language-"] {
   .blog {
     border-color: #000;
     background-color: #111;
+  }
+  .blog-post h2, .blog-post h3, .blog-post h4, .blog-post h5, .blog-post h6 {
+    border-color: rgba(255,255,255,0.25);
   }
   aside.update, .note {
     background-color: #222;

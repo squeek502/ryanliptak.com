@@ -149,6 +149,7 @@ render("posts")
 -- Sort post archives and featured list
 table.sort(data.site.posts, sortDates)
 table.sort(data.site.featured, sortDates)
+data.site.recent = data.site.posts[1]
 
 -- Renger pages
 render("pages")

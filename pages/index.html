@@ -1,5 +1,9 @@
 <div class="latest-blog">
-	<h2>featured posts from the blog...</h2>
+	<h2>most recent blog post</h2>
+	{{#site.recent}}
+	<div class="blog"><a href="/{{{url}}}">{{{title}}}</a> from <time>{{date}}</time></div>
+	{{/site.recent}}
+	<h2>featured blog posts</h2>
 	{{#site.featured}}
 	<div class="blog"><a href="/{{{url}}}">{{{title}}}</a> from <time>{{date}}</time></div>
 	{{/site.featured}}
