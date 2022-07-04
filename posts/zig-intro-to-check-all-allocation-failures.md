@@ -220,7 +220,7 @@ src/main.zig:24:27: 0x20ece9 in parseTest (test)
 
 From this, we can see a few things (starting from the top):
 
-- It printed some info from the `FailingAllocator` including a stack trace of the allocation that was made to fail (note: the stack trace reporting part [has not yet been merged](https://github.com/ziglang/zig/pull/11919)).
+- It printed some info from the `FailingAllocator` including a stack trace of the allocation that was made to fail (note: the stack trace reporting part [was only recently merged](https://github.com/ziglang/zig/pull/11919)).
 - The test failed with `error.MemoryLeakDetected` returned from `checkAllAllocationFailures`.
 - And finally, the `std.testing.allocator` that we passed as the backing allocator to `checkAllAllocationFailures` printed the memory address of the leaked allocation along with a stack trace of where the leaked memory was allocated.
 
@@ -392,10 +392,10 @@ std.testing.checkAllAllocationFailures(
 
 This should generally be avoided, though, as treating `error.NondeterministicMemoryUsage` as a bug by default makes sense. Unless you know that part of the code you're testing has `OutOfMemory` recovery in place somewhere (like `std.BufMap.putMove`), then it's generally a good idea to ensure that the code under test doesn't erroneously/unexpectedly 'swallow' `OutOfMemory` errors.
 
-<aside class="note"><p>There is an [unmerged pull request](https://github.com/ziglang/zig/pull/11919) that will add a possible `error.SwallowedOutOfMemoryError` return from `checkAllAllocationFailures` that is triggered when `FailingAllocator` does induce `OutOfMemory`, but it doesn't get returned by `test_fn`. Once that is merged, it will:
+<aside class="note"><p>There is a [recently merged pull request](https://github.com/ziglang/zig/pull/11919) that adds a possible `error.SwallowedOutOfMemoryError` return from `checkAllAllocationFailures` that is triggered when `FailingAllocator` does induce `OutOfMemory`, but it doesn't get returned by `test_fn`. With this new error, it:
 
-- make this caveat more understandable/obvious
-- allow the caller to ignore *only* the `error.SwallowedOutOfMemoryError` case while continuing to treat `error.NondeterministicMemoryUsage` as an error
+- makes this caveat more understandable/obvious
+- allows the caller to ignore *only* the `error.SwallowedOutOfMemoryError` case while continuing to treat `error.NondeterministicMemoryUsage` as an error
 </p></aside>
 
 If your code's memory allocation is truly non-deterministic in the sense that subsequent runs could have *more* points of allocation than the initial run, then ignoring the `error.NondeterministicMemoryUsage` is inadvisable, as the strategy used by `checkAllAllocationFailures` would no longer be guaranteed to provide full coverage of all possible points of allocation failure.
