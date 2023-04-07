@@ -16,9 +16,6 @@
 
 local lfs = require "lfs"
 local fsutil = require "fsutil"
-local yaml = require "yaml"
--- don't load dates as numbers
-yaml.configure("load_numeric_scalars", false)
 local discount = require "discount"
 local lustache = require "lustache"
 
@@ -40,9 +37,9 @@ local function writeFile(path, data)
   file:close()
 end
 
--- Load YAML from file
-local function loadYAML(path)
-  return yaml.load(readFile(path))
+-- Load Lua from file
+local function loadLua(path)
+  return dofile(path)
 end
 
 -- Load and process Markdown file
@@ -69,7 +66,7 @@ end
 local data = {}
 data.version = "Motyl 1.00"
 data.updated = os.date("%Y-%m-%dT%XZ")
-data.site = loadYAML("motyl.conf")
+data.site = loadLua("motyl.conf.lua")
 data.site.feed = {}
 data.site.posts = {}
 data.site.categories = {}
@@ -92,7 +89,7 @@ local function render(directory)
 
       if extension == "md" or extension == "html" then
         local path = file:match "(.*)%.[^.]+$"
-        data.page = loadYAML(directory .. "/" .. path .. ".yaml")
+        data.page = loadLua(directory .. "/" .. path .. ".lua")
         local html = extension == "md" and loadMD(directory .. "/" .. file) or readFile(directory .. "/" .. file)
         data.page.content = lustache:render(html, data)
         if data.page.url == nil then
