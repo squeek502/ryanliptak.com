@@ -18,9 +18,9 @@ if (pmove.velocity[2] > 180)
 }
 ```
 
-That is, if the player is ever moving up at greater than 180 units (velocity index 2 is the vertical component), then the player is automatically considered 'in the air,' and this overrides all other 'on ground' checks. With this, if a player is colliding with a ramp such that their velocity along the ramp has a large enough vertical component, then they are considered in the air, and thus ground friction is simply not applied (specifically, `PM_AirMove` is called instead of `PM_GroundMove`).
+That is, if the player is ever moving up at greater than 180 units (velocity index 2 is the vertical component), then the player is automatically considered 'in the air,' and this overrides all other 'on ground' checks. With this, if a player is colliding with a ramp such that their velocity along the ramp has a large enough vertical component, then they are considered 'in the air', and thus ground friction is simply not applied (specifically, `PM_AirMove` is called instead of `PM_GroundMove`). This state of being 'in the air' while sliding along an otherwise walkable surface is what is meant by the term 'rampsliding.'
 
-This creates two emergent conditions for rampsliding:
+Subsequently, there are two emergent conditions for rampsliding:
 
 - The ramp can't be too shallow
 - The player can't be going too slow
