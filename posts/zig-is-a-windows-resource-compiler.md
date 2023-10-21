@@ -285,6 +285,12 @@ Some benefits of this:
 
 First, it must be noted that UTF-16 encoded `.rc` files are not supported, since the `clang` preprocessor does not support UTF-16 encoded files. Unfortunately, UTF-16 encoded `.rc` files are fairly common, as Visual Studio generates them. Support for UTF-16 files in `resinator` would likely involve [a custom preprocessor](https://github.com/squeek502/resinator/issues/5), so it's still quite a way off.
 
+<aside class="note"><p>Note: If you encounter a UTF-16 encoded `.rc` file, you have a few options to deal with it:
+
+- If the file contains only characters within the [Windows-1252](https://en.wikipedia.org/wiki/Windows-1252) range, then converting the file to Windows-1252 would be the way to go, since Windows-1252 is the default code page when compiling `.rc` files.
+- If the file contains characters outside the Windows-1252 range, then the file can be converted to UTF-8 and the flag `/c65001` or the preprocessor directive `#pragma code_page(65001)` can be used ([65001 is the code page for UTF-8](https://learn.microsoft.com/en-us/windows/win32/intl/code-page-identifiers)).
+</p></aside>
+
 With that out of the way, there are two interfaces to `resinator` in the Zig compiler:
 
 ### Via `zig build-exe`, `build.zig`, etc
