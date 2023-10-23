@@ -179,6 +179,16 @@ code {
   color: inherit;
 }
 
+a.heading-link {
+  text-decoration: none;
+  margin-left: 8px;
+  font-size: 0.9rem;
+  opacity: .25;
+}
+:is(h1, h2, h3, h4, h5, h6):hover > a.heading-link {
+  opacity: 1;
+}
+
 /* PrismJS 1.10.0
 http://prismjs.com/download.html?themes=prism-okaidia&languages=markup+css+clike+javascript */
 /**
