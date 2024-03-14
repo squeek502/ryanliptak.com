@@ -10,7 +10,7 @@ Uses a custom version of the [Motyl static site generator (the abandoned Lua ver
 You'll need to install the following Lua modules and make them available to Lua:
 - [luafilesystem](https://github.com/keplerproject/luafilesystem)
 - [lustache](https://github.com/Olivine-Labs/lustache)
-- [discount](https://github.com/craigbarnes/lua-discount) (if you're on Windows, you can compile it [from here](https://github.com/squeek502/lua-discount))
+- [cmark-lua](https://github.com/jgm/cmark-lua) (if you're on Windows, you can compile it [from here](https://github.com/squeek502/cmark-lua))
 - (optionally) [sleep](https://github.com/squeek502/sleep) only if you are going to run watch.lua
 
 Once all the dependencies are installed, running:

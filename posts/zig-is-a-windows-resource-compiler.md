@@ -2,7 +2,11 @@ As of a few weeks ago, a cross-platform Windows resource compiler called [resina
 
 If you have no idea what a `.rc` or `.manifest` file is, don't worry! The next section should get you up to speed.
 
-<aside class="note"><p>Note: [I gave a talk about `resinator`](https://www.youtube.com/watch?v=RZczLb_uI9E) a little while back if you're interested in some details about its development (apologies for the poor audio)</p></aside>
+<p><aside class="note">
+
+Note: [I gave a talk about `resinator`](https://www.youtube.com/watch?v=RZczLb_uI9E) a little while back if you're interested in some details about its development (apologies for the poor audio)
+
+</aside></p>
 
 ## Use case: an existing C program
 
@@ -13,7 +17,11 @@ To give you an idea of what's possible with this new capability, let's take an e
 
 The first (and really only) step is to write a `build.zig` file using the existing MinGW/Visual Studio build files as a reference, which [I've done in a fork here](https://github.com/squeek502/rufus).
 
-<aside class="note"><p>Note: a [few workarounds](https://github.com/squeek502/rufus/commit/29996f8f28431142a4caa4503d013000de6dad47) were needed to get things working with the `clang` compiler (which Zig uses under-the-hood for compiling C).</p></aside>
+<p><aside class="note">
+
+Note: a [few workarounds](https://github.com/squeek502/rufus/commit/29996f8f28431142a4caa4503d013000de6dad47) were needed to get things working with the `clang` compiler (which Zig uses under-the-hood for compiling C).
+
+</aside></p>
 
 However, before we jump into compiling it, let's first try compiling without using the `.rc` and `.manifest` files by commenting out a few lines of the `build.zig`:
 
@@ -50,7 +58,11 @@ It turns out that Rufus embeds all of its localization strings as a resource via
 IDR_LC_RUFUS_LOC        RCDATA                  "../res/loc/embedded.loc"
 ```
 
-<aside class="note"><p>Note: A Windows resource-definition file (`.rc`) is made up of both C/C++ preprocessor directives and resource definitions. Resource definitions typically look something like `<id> <type> <filepath>` or `<id> <type> BEGIN <...> END`.</p></aside>
+<p><aside class="note">
+
+Note: A Windows resource-definition file (`.rc`) is made up of both C/C++ preprocessor directives and resource definitions. Resource definitions typically look something like `<id> <type> <filepath>` or `<id> <type> BEGIN <...> END`.
+
+</aside></p>
 
 Instead of restoring the entire `.rc` file at once, though, let's start building the `.rc` file back up piece-by-piece as needed to get a sense of everything the `.rc` file is being used for. To fix this particular error, we can start with this in `rufus.rc`:
 
@@ -61,7 +73,11 @@ Instead of restoring the entire `.rc` file at once, though, let's start building
 IDR_LC_RUFUS_LOC        RCDATA                  "../res/loc/embedded.loc"
 ```
 
-<aside class="note"><p>Note: This is adding a `RCDATA` resource with ID `IDR_LC_RUFUS_LOC` (which is set to the integer `500` via a `#define` in `resource.h`) that gets its data from the file `../res/loc/embedded.loc`. The `RCDATA` resource is used to embed artibrary data into the executable (similar in purpose to Zig's `@embedFile`)--the contents of the `embedded.loc` file can then be loaded at runtime via [`FindResource`](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-findresourcea)/[`LoadResource`](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadresource).</p></aside>
+<p><aside class="note">
+
+Note: This is adding a `RCDATA` resource with ID `IDR_LC_RUFUS_LOC` (which is set to the integer `500` via a `#define` in `resource.h`) that gets its data from the file `../res/loc/embedded.loc`. The `RCDATA` resource is used to embed artibrary data into the executable (similar in purpose to Zig's `@embedFile`)--the contents of the `embedded.loc` file can then be loaded at runtime via [`FindResource`](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-findresourcea)/[`LoadResource`](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadresource).
+
+</aside></p>
 
 With this `.rc` file and the `exe.addWin32ResourceFile` call uncommented in the `build.zig` file, we can build again, but when we try to run now we hit:
 
@@ -136,7 +152,11 @@ The rest of the `.rc` file doesn't affect things in an immediately apparent way,
 
 So now we can restore the full `rufus.rc` file and move on to the [`rufus.manifest`](https://github.com/pbatard/rufus/blob/master/src/rufus.manifest) file.
 
-<aside class="note"><p>Note: A [`.manifest` file](https://learn.microsoft.com/en-us/windows/win32/sbscs/manifest-files-reference) is an XML file that can be embedded into an executable as a special resource type (it is embedded as a string of XML; there's no conversion to a binary format). Windows then reads the embedded XML and modifies certain attributes of the executable as needed.</p></aside>
+<p><aside class="note">
+
+Note: A [`.manifest` file](https://learn.microsoft.com/en-us/windows/win32/sbscs/manifest-files-reference) is an XML file that can be embedded into an executable as a special resource type (it is embedded as a string of XML; there's no conversion to a binary format). Windows then reads the embedded XML and modifies certain attributes of the executable as needed.
+
+</aside></p>
 
 First, let's get back to this problem that we bypassed earlier:
 
@@ -222,7 +242,8 @@ This is all pretty cool, but since the default Windows target ABI is `gnu` (mean
 
 <div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<pre class="language-shellsession" style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"><code class="language-shellsession">$ uname
+
+<pre class="language-shellsession" style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"><code>$ uname
 Linux
 
 $ git clone https://github.com/squeek502/rufus
@@ -232,10 +253,8 @@ $ cd rufus
 $ zig build -Dtarget=x86_64-windows-gnu
 
 $ ls zig-out/bin
-rufus.exe  rufus.pdb</code></pre>
-<i class="caption">Cross-compiling <a href="https://rufus.ie/">Rufus</a> from Linux...</i>
+rufus.exe  rufus.pdb</code></pre><i class="caption">Cross-compiling <a href="https://rufus.ie/">Rufus</a> from Linux...</i>
 </div>
-
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 <img style="margin-left:auto; margin-right:auto; display: block; margin-bottom: 8px; display: flex; flex-direction: column; flex-grow: 1;" src="/images/zig-is-a-windows-resource-compiler/rufus-cross-compiled.png">
 <i class="caption">...and running it on Windows</i>
@@ -285,11 +304,14 @@ Some benefits of this:
 
 First, it must be noted that UTF-16 encoded `.rc` files are not supported, since the `clang` preprocessor does not support UTF-16 encoded files. Unfortunately, UTF-16 encoded `.rc` files are fairly common, as Visual Studio generates them. Support for UTF-16 files in `resinator` would likely involve [a custom preprocessor](https://github.com/squeek502/resinator/issues/5), so it's still quite a way off.
 
-<aside class="note"><p>Note: If you encounter a UTF-16 encoded `.rc` file, you have a few options to deal with it:
+<p><aside class="note">
+
+Note: If you encounter a UTF-16 encoded `.rc` file, you have a few options to deal with it:
 
 - If the file contains only characters within the [Windows-1252](https://en.wikipedia.org/wiki/Windows-1252) range, then converting the file to Windows-1252 would be the way to go, since Windows-1252 is the default code page when compiling `.rc` files.
 - If the file contains characters outside the Windows-1252 range, then the file can be converted to UTF-8 and the flag `/c65001` or the preprocessor directive `#pragma code_page(65001)` can be used ([65001 is the code page for UTF-8](https://learn.microsoft.com/en-us/windows/win32/intl/code-page-identifiers)).
-</p></aside>
+
+</aside></p>
 
 With that out of the way, there are two interfaces to `resinator` in the Zig compiler:
 
@@ -300,7 +322,11 @@ In the simplest form, you can just give the path to the `.rc` file via the comma
 ```language-none
 zig build-exe main.zig my_resource_file.rc
 ```
-<aside class="note"><p>Note: If cross-compiling, then `-target` would need to be specified, e.g. `-target x86_64-windows-gnu`</p></aside>
+<p><aside class="note">
+
+Note: If cross-compiling, then `-target` would need to be specified, e.g. `-target x86_64-windows-gnu`
+
+</aside></p>
 
 the equivalent in `build.zig` would be:
 
@@ -341,14 +367,18 @@ exe.rc_includes = .none;
 
 The possible values are `any` (this is the default), `msvc` (always use MSVC, no fall back), `gnu` (always use MinGW), or `none` (no system include paths provided automatically).
 
-<aside class="note"><p>Note: If the target object file is not `coff`, then specifying a `.rc` or `.res` file on the command line is an error:</p>
+<p><aside class="note">
+
+  Note: If the target object file is not `coff`, then specifying a `.rc` or `.res` file on the command line is an error:
 
 ```language-shellsession
 $ zig build-exe main.zig zig.rc -target x86_64-linux-gnu
 error: rc files are not allowed unless the target object format is coff (Windows/UEFI)
 ```
 
-<p>But <code>std.Build.Compile.Step.addWin32ResourceFile</code> can be used regardless of the target, and if the target object format is not COFF, then the resource file will just be ignored.</p></aside>
+But <code>std.Build.Compile.Step.addWin32ResourceFile</code> can be used regardless of the target, and if the target object format is not COFF, then the resource file will just be ignored.
+
+</aside></p>
 
 #### `.manifest` files
 
@@ -360,7 +390,11 @@ zig build-exe main.zig main.manifest
 
 (on the command line, specifying a `.manifest` file when the target object format is not COFF is an error)
 
-<aside class="note"><p>Note: Windows manifest files must have the extension `.manifest`; the extension `.xml` is not accepted.</p></aside>
+<p><aside class="note">
+
+Note: Windows manifest files must have the extension `.manifest`; the extension `.xml` is not accepted.
+
+</aside></p>
 
 or in `build.zig`:
 
@@ -376,7 +410,11 @@ const exe = b.addExecutable(.{
 
 (in `build.zig`, the manifest file is ignored if the target object format is not COFF)
 
-<aside class="note"><p>Note: Currently, only one manifest file can be specified per compilation. This is because the ID of the manifest resource is currently always 1 (`CREATEPROCESS_MANIFEST_RESOURCE_ID`). Specifying multiple manifests could be supported if a way for the user to specify an ID for each manifest is added (manifest IDs must be a `u16`). I'm not yet familiar enough with manifests to know what the use case for multiple manifests is.</p></aside>
+<p><aside class="note">
+
+Note: Currently, only one manifest file can be specified per compilation. This is because the ID of the manifest resource is currently always 1 (`CREATEPROCESS_MANIFEST_RESOURCE_ID`). Specifying multiple manifests could be supported if a way for the user to specify an ID for each manifest is added (manifest IDs must be a `u16`). I'm not yet familiar enough with manifests to know what the use case for multiple manifests is.
+
+</aside></p>
 
 ### Via `zig rc`
 
@@ -452,7 +490,11 @@ identical .res outputs:     460
 
 That is, `zig rc` compiles every `.rc` file into a byte-for-byte identical `.res` file when compared to `rc.exe` (see [the `README` for `windres` and `llvm-rc` results](https://github.com/squeek502/win32-samples-rc-tests)).
 
-<aside class="note"><p>Note: This byte-for-byte compatibility also holds when compiling `.rc` files via `zig build-exe`, `zig build`, etc</p></aside>
+<p><aside class="note">
+
+Note: This byte-for-byte compatibility also holds when compiling `.rc` files via `zig build-exe`, `zig build`, etc
+
+</aside></p>
 
 ## Diving deeper: How does it work under-the-hood?
 

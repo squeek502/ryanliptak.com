@@ -1,4 +1,4 @@
-<aside class="update">*Last updated 2022-05-08* ([changelog](https://github.com/squeek502/ryanliptak.com/commits/master/posts/fuzzing-zig-code.md))</aside>
+<p><aside class="update"><i>Last updated 2022-05-08</i> (<a href="https://github.com/squeek502/ryanliptak.com/commits/master/posts/fuzzing-zig-code.md">changelog</a>)</aside></p>
 
 After [using code coverage information and real-world files](https://www.ryanliptak.com/blog/code-coverage-zig-callgrind/) to improve an [audio metadata parser](https://github.com/squeek502/audiometa) I am writing in [Zig](https://ziglang.org/), the next step was to fuzz test it in order to ensure that crashes, memory leaks, etc were ironed out as much as possible.
 
@@ -31,7 +31,11 @@ pub fn main() !void {
 }
 ```
 
-<aside class="note"><p>Note: `afl++` passes the fuzzed data in via `stdin` by default</p></aside>
+<p><aside class="note">
+
+Note: `afl++` passes the fuzzed data in via `stdin` by default
+
+</aside></p>
 
 With this, I tried a few of the black-box options that `afl++` has:
 
@@ -39,7 +43,11 @@ With this, I tried a few of the black-box options that `afl++` has:
 - [QEMU mode](https://github.com/AFLplusplus/AFLplusplus#qemu) (`-Q`) would crash immediately on any input; didn't investigate why this is.
 - <mark class="success">[FRIDA mode](https://github.com/AFLplusplus/AFLplusplus#frida) (`-O`) worked without any fiddling required.</mark>
 
-<aside class="note">Note: In FRIDA mode, bugs were marked by `afl++` as 'hangs' rather than 'crashes.' I'm not sure exactly why that is.</aside>
+<p><aside class="note">
+
+Note: In FRIDA mode, bugs were marked by `afl++` as 'hangs' rather than 'crashes.' I'm not sure exactly why that is.
+
+</aside></p>
 
 And with that, I was off to the races. There was a *heavy* runtime penalty to running in this mode, but it was able to catch many problems that were subsequently solved:
 
@@ -152,7 +160,11 @@ pub fn main() !void {
 }
 ```
 
-<aside class="note">Note: Zig's error/stack traces don't seem to work right in the `afl`-instrumented binaries, so for debugging purposes it's helpful to compile a second executable with the Zig compiler that can run the crash-inducing outputs to give you relevant stack traces. This example code could be simplified a bit by using `export fn main()` instead of the more verbose `@export`, but using `@export` and `pub fn main()` in the manner shown above allows the same code to be compiled either for fuzzing or for debugging without any modifications.</aside>
+<p><aside class="note">
+
+Note: Zig's error/stack traces don't seem to work right in the `afl`-instrumented binaries, so for debugging purposes it's helpful to compile a second executable with the Zig compiler that can run the crash-inducing outputs to give you relevant stack traces. This example code could be simplified a bit by using `export fn main()` instead of the more verbose `@export`, but using `@export` and `pub fn main()` in the manner shown above allows the same code to be compiled either for fuzzing or for debugging without any modifications.
+
+</aside></p>
 
 
 To build:
@@ -181,7 +193,11 @@ $ ./fuzz < 'output/default/crashes/id:000001,sig:06,src:000000,time:8,op:havoc,r
 thread 2903735 panic: attempt to unwrap error: BadInput
 ```
 
-<aside class="update"><p>Note: An earlier version of this post recommended `zig build-obj` to create a `.o` file instead of a static library, but the `build-obj` method has issues with `undefined symbol: __zig_probe_stack` linker errors in certain situations. The `build-lib` method recommended in the current post has all the same benefits without the potential for those linker errors.</p></aside>
+<p><aside class="update">
+
+Note: An earlier version of this post recommended `zig build-obj` to create a `.o` file instead of a static library, but the `build-obj` method has issues with `undefined symbol: __zig_probe_stack` linker errors in certain situations. The `build-lib` method recommended in the current post has all the same benefits without the potential for those linker errors.
+
+</aside></p>
 
 ### Integrating with `build.zig`
 

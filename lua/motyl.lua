@@ -16,7 +16,7 @@
 
 local lfs = require "lfs"
 local fsutil = require "fsutil"
-local discount = require "discount"
+local cmark = require "cmark"
 local lustache = require "lustache"
 
 -- Read data from file
@@ -44,7 +44,9 @@ end
 
 -- Load and process Markdown file
 local function loadMD(path)
-  return assert(discount.compile(readFile(path), "fencedcode")).body
+  local contents = readFile(path)
+  local doc = cmark.parse_document(contents, #contents, cmark.OPT_UNSAFE)
+  return assert(cmark.render_html(doc, cmark.OPT_UNSAFE))
 end
 
 -- Render a mustache template
