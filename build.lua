@@ -8,6 +8,8 @@ local function motyl()
   package.loaded["lustache"] = nil
   -- force a re-load
   package.loaded["motyl"] = nil
+  -- force a re-load
+  package.loaded["cmarkutil"] = nil
   require('motyl')
 end
 

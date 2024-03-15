@@ -18,6 +18,7 @@ local lfs = require "lfs"
 local fsutil = require "fsutil"
 local cmark = require "cmark"
 local lustache = require "lustache"
+local cmarkutil = require "cmarkutil"
 
 -- Read data from file
 local function readFile(path)
@@ -46,6 +47,9 @@ end
 local function loadMD(path)
   local contents = readFile(path)
   local doc = cmark.parse_document(contents, #contents, cmark.OPT_UNSAFE)
+
+  cmarkutil.process(doc)
+
   return assert(cmark.render_html(doc, cmark.OPT_UNSAFE))
 end
 
