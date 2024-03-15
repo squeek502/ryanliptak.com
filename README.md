@@ -11,6 +11,7 @@ You'll need to install the following Lua modules and make them available to Lua:
 - [luafilesystem](https://github.com/keplerproject/luafilesystem)
 - [lustache](https://github.com/Olivine-Labs/lustache)
 - [cmark-lua](https://github.com/jgm/cmark-lua) (if you're on Windows, you can compile it [from here](https://github.com/squeek502/cmark-lua))
+- [web_sanitize](https://github.com/leafo/web_sanitize)
 - (optionally) [sleep](https://github.com/squeek502/sleep) only if you are going to run watch.lua
 
 Once all the dependencies are installed, running:

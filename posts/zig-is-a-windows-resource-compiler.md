@@ -243,7 +243,8 @@ This is all pretty cool, but since the default Windows target ABI is `gnu` (mean
 <div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-<pre class="language-shellsession" style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"><code>$ uname
+```language-shellsession style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+$ uname
 Linux
 
 $ git clone https://github.com/squeek502/rufus
@@ -253,11 +254,14 @@ $ cd rufus
 $ zig build -Dtarget=x86_64-windows-gnu
 
 $ ls zig-out/bin
-rufus.exe  rufus.pdb</code></pre><i class="caption">Cross-compiling <a href="https://rufus.ie/">Rufus</a> from Linux...</i>
+rufus.exe  rufus.pdb
+```
+
+<p style="margin:0"><i class="caption">Cross-compiling <a href="https://rufus.ie/">Rufus</a> from Linux...</i></p>
 </div>
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 <img style="margin-left:auto; margin-right:auto; display: block; margin-bottom: 8px; display: flex; flex-direction: column; flex-grow: 1;" src="/images/zig-is-a-windows-resource-compiler/rufus-cross-compiled.png">
-<i class="caption">...and running it on Windows</i>
+<p style="margin:0;"><i class="caption">...and running it on Windows</i></p>
 </div>
 </div>
 
