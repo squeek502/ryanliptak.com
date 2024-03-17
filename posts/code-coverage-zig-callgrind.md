@@ -20,7 +20,7 @@ As far as I can tell, coverage for compiled programs is typically done via the c
 
 [Valgrind](https://valgrind.org/) fits the bill, and it conveniently has a [`--tool=callgrind` option](https://valgrind.org/docs/manual/cl-manual.html) that generates all the data necessary for coverage information. As I understand it, instead of adding instrumentation at compile-time, Valgrind essentially re-compiles a binary just before runtime, adding the necessary instrumentation. Using callgrind will output a [`callgrind.out.<pid>` file with information like](https://www.valgrind.org/docs/manual/cl-format.html) (very simplified):
 
-```language-text
+```language-none
 fl=file.zig
 20 700
 ```
@@ -162,7 +162,7 @@ main.zig.diff
 
 As briefly mentioned in a note before, `zig test` has support for using custom executors via the option `--test-cmd`. Using this can bypass the whole tedious 'finding the real path to the test executable' steps. For example, this:
 
-```language-text
+```language-none
 zig test file.zig --test-cmd grindcov --test-cmd -- --test-cmd-bin
 ```
 
@@ -279,7 +279,7 @@ directly inside `addPackageTests` in `test/tests.zig`, and then commenting out a
 
 As of [commit 0c091feb5a](https://github.com/ziglang/zig/tree/0c091feb5ae52caf1ebf885c0de55b3159207001), these were the coverage results (it's also worth keeping in mind the "completely unused functions don’t contribute to the ‘executable lines’ total" caveat mentioned in a note above):
 
-```language-text
+```language-none
 File                                 Covered LOC Executable LOC Coverage
 ------------------------------------ ----------- -------------- --------
 ...                                  ...         ...                 ...
@@ -290,7 +290,7 @@ Total                                43480       52586            82.68%
 <details>
 <summary>Full file-by-file results (click to expand)</summary>
 
-```language-text
+```language-none
 File                                 Covered LOC Executable LOC Coverage
 ------------------------------------ ----------- -------------- --------
 lib/std/x/net/ip.zig                 12          13               92.31%

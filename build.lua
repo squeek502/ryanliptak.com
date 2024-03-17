@@ -10,6 +10,8 @@ local function motyl()
   package.loaded["motyl"] = nil
   -- force a re-load
   package.loaded["cmarkutil"] = nil
+  -- force a re-load
+  package.loaded["syntaxhighlight"] = nil
   require('motyl')
 end
 

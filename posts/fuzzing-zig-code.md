@@ -180,7 +180,7 @@ And then run the fuzzer:
 $ afl-fuzz -i input -o output -- ./fuzz
 ```
 
-```language-text
+```language-none
 total execs : 113k │ total crashes : 13.5k (2 unique)
 ```
 
@@ -234,7 +234,7 @@ pub fn build(b: *std.build.Builder) !void {
 
 With this, running
 
-```language-text
+```language-none
 zig build fuzz
 ```
 

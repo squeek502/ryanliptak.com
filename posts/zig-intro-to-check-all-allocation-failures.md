@@ -62,7 +62,7 @@ Note: I've created a [repository with runnable versions of all the steps outline
 
 Here's some code that parses a newline-separated list of `key=value` pairs, e.g.
 
-```language-text
+```language-none
 something=other
 equals=equals
 ```
@@ -365,7 +365,7 @@ Earlier, I said that:
 
 However, it turns out that the code we've been testing can actually have non-deterministic memory usage of a sort (at least with the implementation of `std.BufMap` as of this article's writing). For example, if we use the following input for our `parse` function:
 
-```language-text
+```language-none
 foo=bar
 baz=dup
 a=b

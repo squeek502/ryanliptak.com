@@ -1529,7 +1529,7 @@ function M.load(name, alt_name, cache)
   -- `property_int` tables do not exist (they are not useful). Create them in
   -- order prevent errors from occurring.
   if not M.property then
-    M.property = {['lexer.lpeg.home'] = package.path:gsub('/%?%.lua', '')}
+    M.property = {['lexer.lpeg.home'] = package.path:gsub('/%?%.lua', '/lexers')}
     M.property_int = setmetatable({}, {
       __index = function(t, k) return tonumber(M.property[k]) or 0 end,
       __newindex = function() error('read-only property') end
