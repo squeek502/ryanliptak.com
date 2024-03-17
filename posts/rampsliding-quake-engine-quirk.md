@@ -806,6 +806,7 @@ Note that in the above diagram, the velocity loss that would occur from friction
 </script>
 
 <div>
+
 <style scoped>
 .rampsliding-diagram {
 	margin-right: auto; margin-left: auto; display: block;
@@ -1197,4 +1198,5 @@ Note that in the above diagram, the velocity loss that would occur from friction
 	border-right-color: #645175;
 }
 </style>
+
 </div>

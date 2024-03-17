@@ -869,6 +869,7 @@ If you play around with the above diagram, you'll quickly notice that the speed 
 </script>
 
 <div>
+
 <style scoped>
 .rampsliding-diagram {
 	margin-right: auto; margin-left: auto; display: block;
@@ -1152,4 +1153,5 @@ If you play around with the above diagram, you'll quickly notice that the speed 
 }
 }
 </style>
+
 </div>
