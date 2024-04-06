@@ -35,7 +35,7 @@ local function process(doc)
       local info = cmark.node_get_fence_info(cur)
       info = info and info:gsub("^language%-", "")
       local syntax, pre_attrs = info:match("^([^%s]*)(.*)")
-      if syntax then
+      if syntax and syntax ~= "" then
         local contents = cmark.node_get_literal(cur)
         local highlighted, err = highlight(contents, syntax)
 
