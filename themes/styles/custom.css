@@ -374,14 +374,16 @@ pre {
 
 .token_regex,
 .token_important,
-.token_variable {
+.token_variable,
+.token_warning {
   color: #B67500;
 }
 
 @media (prefers-color-scheme: dark) {
   .token_regex,
   .token_important,
-  .token_variable {
+  .token_variable,
+  .token_warning {
     color: #E9A62D;
   }
 }
