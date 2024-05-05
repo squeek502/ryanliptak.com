@@ -81,7 +81,7 @@ So, in general, a resource is a blob of data that can be referenced by an ID, pl
 
 With that out of the way, we're ready to get into it.
 
-## The List
+## The list of bugs/quirks
 
 <div class="bug-quirk-box">
 <span class="bug-quirk-category">tokenizer quirk</span>
@@ -102,7 +102,7 @@ So, following from this, let's try wrapping the resource type name in double quo
 1 "FOO" { "bar" }
 ```
 
-Intuitively, you might expect that this doesn't change anything (i.e. it'll still get parsed into `FOO`), but in fact the Windows RC compiler will include the quotes in the user-defined type name. That is, `"FOO"` will be written as the resource type name in the `.res` file, not `FOO`.
+Intuitively, you might expect that this doesn't change anything (i.e. it'll still get parsed into `FOO`), but in fact the Windows RC compiler will now include the quotes in the user-defined type name. That is, `"FOO"` will be written as the resource type name in the `.res` file, not `FOO`.
 
 This is because both resource IDs and resource types use special tokenization rules--they are basically only terminated by whitespace and nothing else (well, not exactly whitespace, it's actually any ASCII character from `0x05` to `0x20` [inclusive]). As an example:
 
@@ -124,7 +124,7 @@ I've started with this particular quirk because it is actually demonstrative of 
 
 <p><aside class="note">
 
-Note: This is the last time I'll be mentioning the behaviors of `windres`/`llvm-rc`/`wrc`, as this simple example is indicative of how much their implementations diverge from `rc.exe`. See [win32-samples-rc-tests](https://github.com/squeek502/win32-samples-rc-tests/) for a rough approximation of the (strict) compatibility of the different Windows resource compilers on a more-or-less real-world set of `.rc` files.
+Note: This is the last time I'll be mentioning the behaviors of `windres`/`llvm-rc`/`wrc`, as this simple example is indicative of how much their implementations diverge from `rc.exe` for edge cases. See [win32-samples-rc-tests](https://github.com/squeek502/win32-samples-rc-tests/) for a rough approximation of the (strict) compatibility of the different Windows resource compilers on a more-or-less real-world set of `.rc` files.
 
 From here on out, I'll only be mentioning the behavior of [`resinator`](https://github.com/squeek502/resinator), the resource compiler implementation that was the impetus for the findings in this article.
 
@@ -132,7 +132,7 @@ From here on out, I'll only be mentioning the behavior of [`resinator`](https://
 
 #### [`resinator`](https://github.com/squeek502/resinator)'s behavior
 
-`resinator` matches the behavior of `rc.exe` in 100% of known cases.
+`resinator` matches the behavior of `rc.exe` in all known cases.
 
 </div>
 
