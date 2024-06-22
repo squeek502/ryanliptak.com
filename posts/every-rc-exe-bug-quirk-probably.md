@@ -6,9 +6,10 @@ While the `.rc` syntax *in theory* is not complicated, there are edge cases hidi
 
 With a goal of byte-for-byte-identical-outputs (and possible bug-for-bug compatibility) for my implementation, I had to effectively start from scratch, as even [the Windows documentation couldn't be fully trusted to be accurate](https://github.com/MicrosoftDocs/win32/pulls?q=is%3Apr+author%3Asqueek502). Ultimately, I went with fuzz testing (with `rc.exe` as the source of truth/oracle) as my method of choice for deciphering the behavior of the Windows resource compiler (this is similar to something I did [with Lua](https://www.ryanliptak.com/blog/fuzzing-as-test-case-generator/) a while back).
 
-This process led to two things:
+This process led to a few things:
 
-- A high degree of compatibility with the `rc.exe` implementation, including [byte-for-byte identical outputs](https://github.com/squeek502/win32-samples-rc-tests/) for a large corpus of Microsoft-provided sample `.rc` files (~500 files)
+- A completely clean-room implementation of a Windows resource compiler (not even any decompilation involved in the process)
+- A high degree of compatibility with the `rc.exe` implementation, including [byte-for-byte identical outputs](https://github.com/squeek502/win32-samples-rc-tests/) for a sizable corpus of Microsoft-provided sample `.rc` files (~500 files)
 - A large list of strange/interesting/baffling behaviors of the Windows resource compiler
 
 My resource compiler implementation, [`resinator`](https://github.com/squeek502/resinator), has now reached relative maturity and has [been merged into the Zig compiler](https://www.ryanliptak.com/blog/zig-is-a-windows-resource-compiler/), so I thought it might be interesting to write about all the weird stuff I found along the way.
@@ -22,7 +23,7 @@ Note: While this list is thorough, it is only indicative of my current understan
 ## Who is this for?
 
 - If you work at Microsoft, consider this a large list of bug reports (in particular, see everything labeled 'miscompilation')
-  + If you're [Raymond Chen](https://devblogs.microsoft.com/oldnewthing/author/oldnewthing), then consider this an extension/homage to all the (great, very helpful) blog posts about Windows resources in [The Old New Thing](https://devblogs.microsoft.com/oldnewthing/)
+  + If you're [Raymond Chen](https://devblogs.microsoft.com/oldnewthing/author/oldnewthing), then consider this an extension/homage to all the (fantastic, very helpful) blog posts about Windows resources in [The Old New Thing](https://devblogs.microsoft.com/oldnewthing/)
 - If you are a contributor to `llvm-rc`, `windres`, or `wrc`, consider this a long list of behaviors to test for (if strict compatibility is a goal)
 - If you are none of the above, consider this an entertaining list of bizarre bugs/edge cases
 
@@ -126,13 +127,13 @@ I've started with this particular quirk because it is actually demonstrative of 
 
 Note: This is the last time I'll be mentioning the behaviors of `windres`/`llvm-rc`/`wrc`, as this simple example is indicative of how much their implementations diverge from `rc.exe` for edge cases. See [win32-samples-rc-tests](https://github.com/squeek502/win32-samples-rc-tests/) for a rough approximation of the (strict) compatibility of the different Windows resource compilers on a more-or-less real-world set of `.rc` files.
 
-From here on out, I'll only be mentioning the behavior of [`resinator`](https://github.com/squeek502/resinator), the resource compiler implementation that was the impetus for the findings in this article.
+From here on out, I'll only be mentioning the behavior of [`resinator`](https://github.com/squeek502/resinator), my resource compiler implementation that was the impetus for the findings in this article.
 
 </aside></p>
 
 #### [`resinator`](https://github.com/squeek502/resinator)'s behavior
 
-`resinator` matches the behavior of `rc.exe` in all known cases.
+`resinator` matches the resource ID/type tokenization behavior of `rc.exe` in all known cases.
 
 </div>
 
@@ -186,7 +187,7 @@ For example, for the integer literal `123`:
 
 So, how about the integer literal `1²3`? The Windows RC compiler accepts it, but the resulting numeric value ends up being 1403.
 
-The problem is that the exact same procedure outlined above is erroneously followed for *all* allowed digit values, so things go haywire for non-ASCII digits since the relationship between the non-ASCII digit's codepoint value and the value of `'0'` is arbitrary:
+The problem is that the exact same procedure outlined above is erroneously followed for *all* allowed digits, so things go haywire for non-ASCII digits since the relationship between the non-ASCII digit's codepoint value and the ASCII value of `'0'` is arbitrary:
 
 <div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(3, 1fr);">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
@@ -325,7 +326,7 @@ The entire `(1 | 2)+(2-1 & 0xFF)` expression, spaces and all, is interpreted as 
 
 Yes, that's right, `0xFF`!
 
-For whatever reason, `rc.exe` will just take the last number literal in the expression and try to read from a file with that name, e.g. `(1+1)` will try to read from the path `1`, and `1+-1` will try to read from the path `-1` (the `-` sign is part of the number literal token in this case).
+For whatever reason, `rc.exe` will just take the last number literal in the expression and try to read from a file with that name, e.g. `(1+1)` will try to read from the path `1`, and `1+-1` will try to read from the path `-1` (the `-` sign is [part of the number literal token in this case](#unary-operators-are-an-illusion)).
 
 #### `resinator`'s behavior
 
@@ -336,6 +337,74 @@ test.rc:1:7: error: filename cannot be specified using a number expression, cons
 1 FOO (1 | 2)+(2-1 & 0xFF)
       ^~~~~~~~~~~~~~~~~~~~
 test.rc:1:7: note: the Win32 RC compiler would evaluate this number expression as the filename '0xFF'
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk</span>
+
+### Incomplete resource at EOF
+
+The incomplete resource definition in the following example is an error:
+
+```c
+// A complete resource definition
+1 FOO { "bar" }
+
+// An incomplete resource definition
+2 FOO
+```
+
+But it's not the error you might be expecting:
+
+```
+test.rc(6) : error RC2135 : file not found: FOO
+```
+
+Strangely, `rc.exe` in this case will treat `FOO` as both the type of the resource *and* as the filename for the resource's data. If you create a file with the name `FOO` it will *successfully compile*, and the `.res` will have a resource with type `FOO` and its data will be that of the file `FOO`.
+
+#### `resinator`'s behavior
+
+`resinator` does not match the `rc.exe` behavior and instead errors on this type of incomplete resource definition at the end of a file:
+
+```language-resinatorerror
+test.rc:5:6: error: expected quoted string literal or unquoted literal; got '<eof>'
+2 FOO
+     ^
+```
+
+However...
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk</span>
+
+### Dangling literal at EOF
+
+If we change the previous example to only have one dangling literal for its incomplete resource definition like so:
+
+```c
+// A complete resource definition
+1 FOO { "bar" }
+
+// An incomplete resource definition
+FOO
+```
+
+Then `rc.exe` *will always successfully compile it* (and it won't try to read from the file `FOO`). That is, a single dangling literal at the end of a file is fully allowed, and it is just treated as if it doesn't exist (there's no corresponding resource in the resulting `.res` file).
+
+It also turns out that there are three `.rc` files in [Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples) that rely on this behavior ([1](https://github.com/microsoft/Windows-classic-samples/blob/a47da3d4551b74bb8cc1f4c7447445ac594afb44/Samples/CredentialProvider/cpp/resources.rc), [2](https://github.com/microsoft/Windows-classic-samples/blob/a47da3d4551b74bb8cc1f4c7447445ac594afb44/Samples/Win7Samples/security/credentialproviders/sampleallcontrolscredentialprovider/resources.rc), [3](https://github.com/microsoft/Windows-classic-samples/blob/a47da3d4551b74bb8cc1f4c7447445ac594afb44/Samples/Win7Samples/security/credentialproviders/samplewrapexistingcredentialprovider/resources.rc)), so in order to fully pass [win32-samples-rc-tests](https://github.com/squeek502/win32-samples-rc-tests/), it is necessary to allow a dangling literal at the end of a file.
+
+#### `resinator`'s behavior
+
+`resinator` allows a single dangling literal at the end of a file, but emits a warning:
+
+```language-resinatorerror
+test.rc:5:1: warning: dangling literal at end-of-file; this is not a problem, but it is likely a mistake
+FOO
+^~~
 ```
 
 </div>
@@ -423,7 +492,7 @@ When saved as Windows-1252 (the default code page for the Windows RC compiler), 
 
 If the same Windows-1252-encoded file is compiled with the default code page set to UTF-8 (`rc.exe /c65001`), then the `0xD3` byte in the `.rc` file will be an invalid UTF-8 byte sequence and get replaced with � during preprocessing, and because the code page is UTF-8, the *output* in the `.res` file will also be encoded as UTF-8, so the bytes `0xEF 0xBF 0xBD` (the UTF-8 sequence for �) will be written.
 
-Things start to get truly bizarre when you add `#pragma code_page` into the mix:
+This is all pretty reasonable, but things start to get truly bizarre when you add `#pragma code_page` into the mix:
 
 ```c
 #pragma code_page(1252)
@@ -433,7 +502,7 @@ Things start to get truly bizarre when you add `#pragma code_page` into the mix:
 When saved as Windows-1252 and compiled with Windows-1252 as the default code page, this will work the same as described above. However, if we compile the same Windows-1252-encoded `.rc` file with the default code page set to UTF-8 (`rc.exe /c65001`), we see something rather strange:
 
 - The input `0xD3` byte is interpreted as `Ó`, as expected since the `#pragma code_page` changed the code page to 1252
-- The output in the `.res` is `0xC3 0x93`, the UTF-8 sequence for `Ó`
+- The output in the `.res` is `0xC3 0x93`, the UTF-8 sequence for `Ó` (instead of the expected `0xD3` which is the Windows-1252 encoding of `Ó`)
 
 That is, the `#pragma code_page` changed the *input* code page, but there is a distinct *output* code page that can be out-of-sync with the input code page. In this instance, the input code page for the `1 RCDATA ...` line is Windows-1252, but the output code page is still the default set from the CLI option (in this case, UTF-8).
 
@@ -985,6 +1054,23 @@ As an example, here are `NOT` expressions used in the `x`, `y`, `width`, and `he
 
 This doesn't necessarily cause problems, but since `NOT` is only useful in the context of turning off enabled-by-default flags of a bit flag parameter, there's no reason to allow `NOT` expressions outside of that context.
 
+However, there *is* an extra bit of weirdness involved here, since certain `NOT` expressions cause errors in some places but not others. For example, the expression `1 | NOT 2` is an error if it's used in the `type` parameter of a `MENUEX`'s `MENUITEM`, but `NOT 2 | 1` is totally accepted.
+
+```c
+1 MENUEX {
+  // Error: numeric value expected at NOT
+  MENUITEM "bar", 101, 1 | NOT 2
+  // No error if the NOT is moved to the left of the bitwise OR
+  MENUITEM "foo", 100, NOT 2 | 1
+}
+```
+
+<p><aside class="note">
+
+Note: `1 | NOT 2` is legal in all bit flag parameters (where the use of `NOT` actually makes sense).  
+
+</aside></p>
+
 #### `resinator`'s behavior
 
 `resinator` errors if `NOT` expressions are attempted to be used outside of bit flag parameters:
@@ -993,6 +1079,767 @@ This doesn't necessarily cause problems, but since `NOT` is only useful in the c
 test.rc:1:12: error: expected number or number expression; got 'NOT'
 1 DIALOGEX NOT 1, NOT 2, NOT 3, NOT 4
            ^~~
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">missing error, miscompilation</span>
+
+### Cursor posing as an icon and vice versa
+
+The `ICON` and `CURSOR` resource types expect a `.ico` file and a `.cur` file, respectively. The format of `.ico` and `.cur` is identical, but there is an 'image type' field that denotes the type of the file (`1` for icon, `2` for cursor).
+
+The Windows RC compiler does not discriminate on what type is used for which resource. If we have `foo.ico` with the 'icon' type, and `foo.cur` with the 'cursor' type, then the Windows RC compiler will happily accept all of the following resources:
+
+```c
+1 ICON "foo.ico"
+2 ICON "foo.cur"
+3 CURSOR "foo.ico"
+4 CURSOR "foo.cur"
+```
+
+However, the resources with the mismatched types becomes a problem in the resulting `.res` file because `ICON` and `CURSOR` have different formats for their resource data. When the type is 'cursor', a [LOCALHEADER](https://learn.microsoft.com/en-us/windows/win32/menurc/localheader) consisting of two cursor-specific `u16` fields is written at the start of the resource data. This means that:
+
+- An `ICON` resource with a `.cur` file will write those extra cursor-specific fields, but still 'advertise' itself as an `ICON` resource
+- A `CURSOR` resource with an `.ico` file will *not* write those cursor-specific fields, but still 'advertise' itself as a `CURSOR` resource
+- In both of these cases, attempting to load the resource will always end up with an incorrect/invalid result because the parser will be assuming that those fields exist/don't exist based on the resource type
+
+So, such a mismatch *always* leads to incorrect/invalid resources in the `.res` file.
+
+#### `resinator`'s behavior
+
+`resinator` errors if the resource type (`ICON`/`CURSOR`) doesn't match the type specified in the `.ico`/`.cur` file:
+
+```resinatorerror
+test.rc:1:10: error: resource type 'cursor' does not match type 'icon' specified in the file
+1 CURSOR "foo.ico"
+         ^~~~~~~~~
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">unnecessary limitation</span>
+
+### PNG encoded cursors are erroneously rejected
+
+`.ico`/`.cur` files are a 'directory' of multiple icons/cursors, used for different resolutions. Historically, each image was a [device-independent bitmap (DIB)](https://learn.microsoft.com/en-us/windows/win32/gdi/device-independent-bitmaps), but nowadays they can also be encoded as PNG.
+
+The Windows RC compiler is fine with `.ico` files that have PNG encoded images, but for whatever reason rejects `.cur` files with PNG encoded images.
+
+```c
+// No error, compiles and loads just fine
+1 ICON "png.ico"
+// error RC2176 : old DIB in 1x1_png.cur; pass it through SDKPAINT
+2 CURSOR "png.cur"
+```
+
+This limitation is provably artificial, though. If a `.res` file contains a `CURSOR` resource with PNG encoded image(s), then [`LoadCursor`](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-loadcursorw) works correctly and the cursor displays correctly.
+
+#### `resinator`'s behavior
+
+`resinator` allows PNG encoded cursor images, and warns about the Windows RC compiler behavior:
+
+```resinatorerror
+test.rc:2:10: warning: the resource at index 0 of this cursor has the format 'png'; this would be an error in the Win32 RC compiler
+2 CURSOR png.cur
+         ^~~~~~~
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">miscompilation, utterly baffling</span>
+
+### Adversarial icons/cursors can lead to arbitrarily large `.res` files
+
+Each image in a `.ico`/`.cur` file has a corresponding header entry which contains (a)
+ the size of the image in bytes, and (b) the offset of the image's data within the file. The Windows RC file fully trusts that this information is accurate; it will never error regardless of how malformed these two pieces of information are.
+
+If the reported size of an image is larger than the size of the `.ico`/`.cur` file itself, the Windows RC compiler will:
+
+- Write however many bytes there are before the end of the file
+- Write zeroes for any bytes that are past the end of the file, except
+- Once it has written 0x4000 bytes total, it will repeat these steps again and again until it reaches the full reported size
+
+Because a `.ico`/`.cur` can contain up to 65535 images, and each image within can report its size as up to 2 GiB (more on this later), this means that a small (< 1 MiB) maliciously constructed `.ico`/`.cur` could cause the Windows RC compiler to attempt to write up to 127 TiB of data to the `.res` file.
+
+#### `resinator`'s behavior
+
+`resinator` errors if the reported file size of an image is larger than the size of the `.ico`/`.cur` file:
+
+```resinatorerror
+test.rc:1:8: error: unable to read icon file 'test.ico': ImpossibleDataSize
+1 ICON test.ico
+       ^~~~~~~~
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">miscompilation, utterly baffling</span>
+
+### Adversarial icons/cursors can lead to _**infinitely large**_ `.res` files
+
+As mentioned in [*Adversarial icons/cursors can lead to arbitrarily large `.res` files*](#adversarial-icons-cursors-can-lead-to-arbitrarily-large-res-files), each image within an icon/cursor can report its size as up to 2 GiB. However, the field for the image size is actually 4 bytes wide, meaning the maximum should technically be 4 GiB.
+
+The 2 GiB limit comes from the fact that the Windows RC compiler actually interprets this field as a *signed* integer, so if you try to define an image with a size larger than 2 GiB, it'll get interpreted as negative. We can confirm this by compiling with the verbose flag (`/v`):
+
+```
+Writing ICON:1, lang:0x409, size -6000000
+```
+
+When this happens, the Windows RC compiler seemingly enters into an infinite loop when writing the icon data to the `.res` file, meaning it will continue trying to write garbage until (presumably) all the space of the hard drive has been used up.
+
+#### `resinator`'s behavior
+
+`resinator` avoids misinterpreting the image size as signed, and allows images of up to 4 GiB to be specified if the `.ico`/`.cur` file actually is large enough to contain them.
+
+</div>
+
+<div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">miscompilation</span>
+
+### Icon/cursor images with impossibly small sizes lead to bogus `.res` files
+
+Similar to [*Adversarial icons/cursors can lead to arbitrarily large `.res` files*](#adversarial-icons-cursors-can-lead-to-arbitrarily-large-res-files), it's also possible for images to specify their size as impossibly small:
+
+- If the size of an image is reported as zero, then the Windows RC compiler will:
+  + Write an arbitrary size for the resource's data
+  + Not actually write any bytes to the data section of the resource
+- If the size of an image is smaller than the header of the image format, then the Windows RC compiler will:
+  + Read the full header for the image, even if it goes past the reported end of the image data
+  + Write the reported number of bytes to the `.res` file, which can never be a valid image since it is smaller than the header size of the image format
+
+#### `resinator`'s behavior
+
+`resinator` errors if the reported size of an image within a `.ico`/`.cur` is too small to contain a valid image header:
+
+```resinatorerror
+test.rc:1:8: error: unable to read icon file 'test.ico': ImpossibleDataSize
+1 ICON test.ico
+       ^~~~~~~~
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">miscompilation</span>
+
+### Bitmaps with missing bytes in their color table
+
+`BITMAP` resources expect `.bmp` files, which are roughly structured something like this:
+
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+    <code class="language-none"><span style="background: rgba(255,0,0,.1);">..BITMAPFILEHEADER..</span>
+<span style="background: rgba(0,0,255,.1);">..BITMAPINFOHEADER..</span>
+<span style="background: rgba(0,0,255,.1);">....................</span>
+<span style="background: rgba(0,255,0,.1);">....color table.....</span>
+<span style="background: rgba(0,255,0,.1);">....................</span>
+<span style="background: rgba(150,0,255,.1);">....pixel data......</span>
+<span style="background: rgba(150,0,255,.1);">....................</span>
+<span style="background: rgba(150,0,255,.1);">....................</span></code>
+  </pre>
+</div>
+
+The color table has a variable number of entries, dictated by either the `biClrUsed` field of the `BITMAPINFOHEADER`, or, if `biClrUsed` is zero, 2<sup>n</sup> where `n` is the number of bits per pixel (`biBitCount`). When the number of bits per pixel is 8 or fewer, this color table is used as a color palette for the pixels in the image:
+
+<div class="bitmapcolors">
+  <div class="colortable">
+    <div class="colorentry">
+      <div class="colori"><span class="textbg">0</span></div>
+      <div style="background: rgba(255,0,0,0.1)">179</div>
+      <div style="background: rgba(0,255,0,0.1)">127</div>
+      <div style="background: rgba(0,0,255,0.1)">46</div>
+      <div style="background: rgba(100,100,100,0.1)">-</div>
+      <div class="finalcolor" style="background: rgba(179,127,46,0.5);"></div>
+    </div>
+    <div class="colorentry">
+      <div class="colori"><span class="textbg">1</span></div>
+      <div style="background: rgba(255,0,0,0.1)">44</div>
+      <div style="background: rgba(0,255,0,0.1)">96</div>
+      <div style="background: rgba(0,0,255,0.1)">167</div>
+      <div style="background: rgba(100,100,100,0.1)">-</div>
+      <div class="finalcolor" style="background: rgba(44,96,167,0.5);"></div>
+    </div>
+    <div class="colorentry">
+      <div class="colori"><span class="textbg">2</span></div>
+      <div style="background: rgba(255,0,0,0.1)">154</div>
+      <div style="background: rgba(0,255,0,0.1)">60</div>
+      <div style="background: rgba(0,0,255,0.1)">177</div>
+      <div style="background: rgba(100,100,100,0.1)">-</div>
+      <div class="finalcolor" style="background: rgba(154,60,177,0.5);"></div>
+    </div>
+  </div>
+  <div class="colorlabels">
+    <div>color index</div>
+    <div>color rgb</div>
+    <div>color</div>
+  </div>
+</div>
+
+<p style="text-align: center;"><i class="caption">Example color table (above) and some pixel data that references the color table (below)</i></p>
+
+
+<div class="bitmappixels">
+  <div>...</div>
+  <div style="background: rgba(44,96,167,0.5);"><span class="textbg">1</span></div>
+  <div style="background: rgba(179,127,46,0.5)"><span class="textbg">0</span></div>
+  <div style="background: rgba(154,60,177,0.5)"><span class="textbg">2</span></div>
+  <div style="background: rgba(179,127,46,0.5)"><span class="textbg">0</span></div>
+  <div style="background: rgba(44,96,167,0.5);"><span class="textbg">1</span></div>
+  <div>...</div>
+</div>
+
+This is relevant because the Windows resource compiler does not just write the bitmap data to the `.res` verbatim. Instead, it strips the `BITMAPFILEHEADER` and will always write the expected number of color table bytes, even if the number of color table bytes in the file doesn't match expectations.
+
+<div style="text-align: center; display: grid; grid-gap: 10px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+    <code class="language-none"><span style="background: rgba(255,0,0,.1);">..BITMAPFILEHEADER..</span>
+<span style="background: rgba(0,0,255,.1);">..BITMAPINFOHEADER..</span>
+<span style="background: rgba(0,0,255,.1);">....................</span>
+<span style="background: rgba(150,0,255,.1);">....pixel data......</span>
+<span style="background: rgba(150,0,255,.1);">....................</span>
+<span style="background: rgba(150,0,255,.1);">....................</span></code>
+  </pre>
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+    <code class="language-none"><span style="background: rgba(0,0,255,.1);">..BITMAPINFOHEADER..</span>
+<span style="background: rgba(0,0,255,.1);">....................</span>
+<span style="background: rgba(0,255,0,.1);">....color table.....</span>
+<span style="background: rgba(0,255,0,.1);">....................</span>
+<span style="background: rgba(150,0,255,.1);">....pixel data......</span>
+<span style="background: rgba(150,0,255,.1);">....................</span>
+<span style="background: rgba(150,0,255,.1);">....................</span></code>
+  </pre>
+</div>
+</div>
+<p style="margin:0; text-align: center;"><i class="caption">A bitmap file that omits the color table even though a color table is expected, and the data written to the <code>.res</code> for that bitmap</i></p>
+
+Typically, a bitmap with a shorter-than-expected color table is considered invalid (or, at least, Windows and Firefox fail to render them), but the Windows RC compiler does not error on such files. Instead, it will completely ignore the bounds of the color table and just read into the following pixel data if necessary, treating it as color data.
+
+<div style="text-align: center; display: grid; grid-gap: 10px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+    <code class="language-none"><span style="background: rgba(255,0,0,.1);">..BITMAPFILEHEADER..</span>
+<span style="background: rgba(0,0,255,.1);">..BITMAPINFOHEADER..</span>
+<span style="background: rgba(0,0,255,.1);">....................</span>
+<div style="outline: 2px dashed rgba(150,0,255,.75);"><span style="background: rgba(150,0,255,.1);">....pixel data......</span>
+<span style="background: rgba(150,0,255,.1);">....................</span></div><span style="background: rgba(150,0,255,.1);">....................</span></code>
+  </pre>
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+    <code class="language-none"><span style="background: rgba(0,0,255,.1);">..BITMAPINFOHEADER..</span>
+<span style="background: rgba(0,0,255,.1);">....................</span>
+<div style="outline: 2px dashed rgba(150,0,255,.75);"><span style="background: rgba(0,255,0,.1);">..."color table"....</span>
+<span style="background: rgba(0,255,0,.1);">....................</span></div><span style="background: rgba(150,0,255,.1);">....pixel data......</span>
+<span style="background: rgba(150,0,255,.1);">....................</span>
+<span style="background: rgba(150,0,255,.1);">....................</span></code>
+  </pre>
+</div>
+</div>
+<p style="margin:0; text-align: center;"><i class="caption">When compiled with the Windows RC compiler, the bytes of the color table in the <code>.res</code> will consist of the bytes in the outlined region of the pixel data in the original bitmap file.</i></p>
+
+Further, if it runs out of pixel data to read (i.e. the inferred size of the color table extends beyond the end of the file), it will start filling in the remaining missing color table bytes with zeroes.
+
+<p><aside class="note">
+
+My guess is that this behavior is largely unintentional, and is a byproduct of two things:
+
+- By stripping the `BITMAPFILEHEADER` from the bitmap during resource compilation, the `bfOffBits` field (which contains the offset from the beginning of the file to the pixel data) is not present in the compiled resource
+- A bitmap with *more* than the expected number of color table bytes is probably valid ([see `q/pal8offs.bmp` of bmpsuite](https://entropymine.com/jason/bmpsuite/bmpsuite/html/bmpsuite.html))
+
+The first point means that the size of the color table must always match the size given in `BITMAPINFOHEADER`, since the start of the pixel data must be calculated using the size of the color table. The second point means that there is *some* reason not to error out completely when the color table does not match the expected size.
+
+Together, it means that there is some justification for forcing the color table to match the expected size when there is a mismatch.
+
+</aside></p>
+
+#### From invalid to valid
+
+Interestingly, the behavior with regards to smaller-than-expected color tables means that an invalid bitmap compiled as a resource can end up becoming a valid bitmap. For example, if you have a bitmap with 12 actual entries in the color table, but `BITMAPFILEHEADER.biClrUsed` says there are 13, Windows considers that an invalid bitmap and won't render it. If you take that bitmap and compile it as a resource, though:
+
+```c
+1 BITMAP "invalid.bmp"
+```
+
+The resulting `.res` will pad the color table of the bitmap to get up to the expected number of entries (13 in this case), and therefore the resulting resource will render fine when using `LoadBitmap` to load it.
+
+#### Maliciously constructed bitmaps
+
+The dark side of this bug/quirk is that the Windows RC compiler does not have any limit as to how many missing color palette bytes it allows, and this is even the case when there are possible hard limits available (e.g. a bitmap with 4-bits-per-pixel can only have 2<sup>4</sup> (16) colors, but the Windows RC compiler doesn't mind if a bitmap says it has more than that).
+
+The `biClrUsed` field (which contains the number of color table entries) is a `u32`, meaning a bitmap can specify it contains up to 4.29 billion entries in its color table, where each color entry is 4 bytes long (or 3 bytes for old Windows 2.0 bitmaps). This means that a maliciously constructed bitmap can induce the Windows RC compiler to write up to 16 GiB of color table data when writing its resource, even if the file itself doesn't contain *any* color table at all.
+
+#### `resinator`'s behavior
+
+`resinator` errors if there are any missing palette bytes:
+
+```resinatorerror
+test.rc:1:10: error: bitmap has 16 missing color palette bytes
+1 BITMAP missing_palette_bytes.bmp
+         ^~~~~~~~~~~~~~~~~~~~~~~~~
+test.rc:1:10: note: the Win32 RC compiler would erroneously pad out the missing bytes (and the added padding bytes would include 6 bytes of the pixel data)
+```
+
+For a maliciously constructed bitmap, that error might look like:
+
+```resinatorerror
+test.rc:1:10: error: bitmap has 17179869180 missing color palette bytes
+1 BITMAP trust_me.bmp
+         ^~~~~~~~~~~~
+test.rc:1:10: note: the Win32 RC compiler would erroneously pad out the missing bytes
+```
+
+There's also a warning for extra bytes between the color table and the pixel data:
+
+```resinatorerror
+test.rc:2:10: warning: bitmap has 4 extra bytes preceding the pixel data which will be ignored
+2 BITMAP extra_palette_bytes.bmp
+         ^~~~~~~~~~~~~~~~~~~~~~~
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">miscompilation</span>
+
+### Bitmaps with BITFIELDS and a color palette
+
+When testing things using the bitmaps from [bmpsuite](https://entropymine.com/jason/bmpsuite/), there is one well-formed `.bmp` file that `rc.exe` and `resinator` handle differently:
+
+> `g/rgb16-565pal.bmp`: A 16-bit image with both a BITFIELDS segment and a palette.
+
+The details aren't too important here, so just know that the file is structured like this:
+
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+    <code class="language-none"><span style="background: rgba(255,0,0,.1);">..BITMAPFILEHEADER..</span>
+<span style="background: rgba(0,0,255,.1);">..BITMAPINFOHEADER..</span>
+<span style="background: rgba(0,0,255,.1);">....................</span>
+<span style="background: rgba(255,216,0,.1);">.....bitfields......</span>
+<span style="background: rgba(0,255,0,.1);">....color table.....</span>
+<span style="background: rgba(0,255,0,.1);">....................</span>
+<span style="background: rgba(150,0,255,.1);">....pixel data......</span>
+<span style="background: rgba(150,0,255,.1);">....................</span>
+<span style="background: rgba(150,0,255,.1);">....................</span></code>
+  </pre>
+</div>
+
+As mentioned earlier, the `BITMAPFILEHEADER` is dropped when compiling a `BITMAP` resource, but for whatever reason, `rc.exe` also drops the color table when compiling this `.bmp`, so it ends up like this in the compiled `.res`:
+
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+    <code class="language-none"><span style="background: rgba(0,0,255,.1);">..BITMAPINFOHEADER..</span>
+<span style="background: rgba(0,0,255,.1);">....................</span>
+<span style="background: rgba(255,216,0,.1);">.....bitfields......</span>
+<span style="background: rgba(150,0,255,.1);">....pixel data......</span>
+<span style="background: rgba(150,0,255,.1);">....................</span>
+<span style="background: rgba(150,0,255,.1);">....................</span></code>
+  </pre>
+</div>
+
+Note, though, that within the `BITMAPINFOHEADER`, it still says that there is a color table present (specifically, that there are 256 entries in the color table), so this is likely a miscompilation. One possibility here is that it's not intended to be valid for a `.bmp` to contain *both* color masks *and* a color table, but that seems dubious because Windows renders the original `.bmp` file just fine in Explorer/Photos.
+
+<p><aside class="note">
+
+Note: This particular bitmap structure is potentially unlikely to encounter in the wild, since bitmaps with >= 16-bit depth and a color table seem largely useless (for bit depths >= 16, the color table is only used for "optimizing colors used on palette-based devices")
+
+The available documentation regarding this ([`BITMAPINFOHEADER`](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapinfoheader), [`BITMAPV5HEADER`](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapv5header)) I found to be unclear at best, though.
+
+</aside></p>
+
+#### `resinator`'s behavior
+
+`resinator` does not drop the color table, so in the compiled `.res` the bitmap resource data looks like this:
+
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+    <code class="language-none"><span style="background: rgba(0,0,255,.1);">..BITMAPINFOHEADER..</span>
+<span style="background: rgba(0,0,255,.1);">....................</span>
+<span style="background: rgba(255,216,0,.1);">.....bitfields......</span>
+<span style="background: rgba(0,255,0,.1);">....color table.....</span>
+<span style="background: rgba(0,255,0,.1);">....................</span>
+<span style="background: rgba(150,0,255,.1);">....pixel data......</span>
+<span style="background: rgba(150,0,255,.1);">....................</span>
+<span style="background: rgba(150,0,255,.1);">....................</span></code>
+  </pre>
+</div>
+
+and while I think this is correct, it turns out that...
+
+#### `LoadBitmap` mangles both versions anyway
+
+When the compiled resources are loaded with `LoadBitmap` and drawn [using `BitBlt`](http://parallel.vub.ac.be/education/modula2/technology/Win32_tutorial/bitmaps.html), neither the `rc.exe`-compiled version, nor the `resinator`-compiled version are drawn correctly:
+
+<div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(3, 1fr);">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><img style="image-rendering:pixelated; width:100%;" src="/images/every-rc-exe-bug-quirk-probably/bmp-intended.png" /></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><img style="image-rendering:pixelated; width:100%;" src="/images/every-rc-exe-bug-quirk-probably/bmp-rc.png" /></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><img style="image-rendering:pixelated; width:100%;" src="/images/every-rc-exe-bug-quirk-probably/bmp-resinator.png" /></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">intended image</i></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">bitmap resource from <code>rc.exe</code></i></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">bitmap resource from <code>resinator</code></i></div>
+</div>
+
+My guess/hope is that this a bug in `LoadBitmap`, as I believe the `resinator`-compiled resource should be correct/valid.
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">preprocessor bug/quirk</span>
+
+### Extreme `#pragma code_page` values
+
+The resource-compiler-specific preprocessor directive `#pragma code_page` can be used to alter the [code page](https://en.wikipedia.org/wiki/Code_page) used mid-file. It's used like so:
+
+```c
+#pragma code_page(1252) // Windows-1252
+// ... bytes from now on are interpreted as Windows-1252 ...
+
+#pragma code_page(65001) // UTF-8
+// ... bytes from now on are interpreted as UTF-8 ...
+```
+
+The list of possible code pages [can be found here](https://learn.microsoft.com/en-us/windows/win32/intl/code-page-identifiers). If you try to use one that is not valid, `rc.exe` will error with:
+
+```
+fatal error RC4214: Codepage not valid:  ignored
+```
+
+But what happens if you try to use an extremely large code page value (greater or equal to the max of a `u32`)? Most of the time it errors in the same way as above, but occasionally there's a strange / inexplicable error. Here's a selection of a few:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+#pragma code_page(4294967296)
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+error RC4212: Codepage not integer:  )
+fatal error RC1116: RC terminating after preprocessor errors
+```
+
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+#pragma code_page(4295032296)
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+fatal error RC22105: MultiByteToWideChar failed.
+```
+
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+#pragma code_page(4295032297)
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+test.rc(2) : error RC2177: constant too big
+test.rc(2) : error RC4212: Codepage not integer:  4
+fatal error RC1116: RC terminating after preprocessor errors
+```
+
+</div>
+</div>
+
+#### `resinator`'s behavior
+
+`resinator` treats code pages exceeding the max of a `u32` as a fatal error.
+
+```resinatorerror
+test.rc:1:1: error: code page too large in #pragma code_page
+#pragma code_page ( 4294967296 )
+^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+```
+
+This is a separate error from the one caused by invalid/unsupported code pages:
+
+```resinatorerror
+test.rc:1:1: error: invalid or unknown code page in #pragma code_page
+#pragma code_page ( 64999 )
+^~~~~~~~~~~~~~~~~~~~~~~~~~~
+```
+
+```resinatorerror
+test.rc:1:1: error: unsupported code page 'utf7 (id=65000)' in #pragma code_page
+#pragma code_page ( 65000 )
+^~~~~~~~~~~~~~~~~~~~~~~~~~~
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk, utterly baffling</span>
+
+### The strange power of the lonely close parenthesis
+
+Likely due to some number expression parsing code gone haywire, a single close parenthesis `)` is occasionally treated as a 'valid' expression, with bizarre consequences.
+
+Similar to what was detailed in ["*`BEGIN` or `{` as filename*"](#begin-or-as-filename), using `)` as a filename has the same interaction as `{` where the preceding token is treated as both the resource type and the filename.
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+1 RCDATA )
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+test.rc(2) : error RC2135 : file not found: RCDATA
+```
+
+</div>
+</div>
+
+But that's not all; take this, for example, where we define a `RCDATA` resource using a raw data block:
+
+```c
+1 RCDATA { 1, ), ), ), 2 }
+```
+
+This should very clearly be a syntax error, but it's actually accepted by the Windows RC compiler. What does the RC compiler do, you ask? Well, it just skips right over all the `)`, of course, and the data of this resource ends up as:
+
+<pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+  <code class="language-none"><span style="font-family:sans-serif; font-style:italic">the 1 (u16 little endian) &rarr;</span> <span style="outline: 1px dashed red;">01 00</span> <span style="outline: 1px dashed orange;">02 00</span> <span style="font-family:sans-serif; font-style:italic">&larr; the 2 (u16 little endian)</span></code>
+</pre>
+
+I said 'skip' because that's truly what seems to happen. For example, for resource definitions that take positional parameters like so:
+
+<pre><code class="language-none"><span style="opacity: 50%;">1 DIALOGEX 1, 2, 3, 4 {</span>
+  <span class="token_comment">//        &lt;text&gt; &lt;id&gt; &lt;x&gt; &lt;y&gt; &lt;w&gt; &lt;h&gt; &lt;style&gt;</span>
+  <span>CHECKBOX</span>  <span class="token_string">"test"</span>,  <span class="token_number">1</span>,  <span class="token_number">2</span>,  <span class="token_number">3</span>,  <span class="token_number">4</span>,  <span class="token_number">5</span>,  <span class="token_number">6</span>
+<span style="opacity: 50%;">}</span></code>
+</pre>
+
+If you replace the `<id>` parameter (`1`) with `)`, then all the parameters shift over and they get interpreted like this instead:
+
+<pre><code class="language-none"><span style="opacity: 50%;">1 DIALOGEX 1, 2, 3, 4 {</span>
+  <span class="token_comment">//        &lt;text&gt;     &lt;id&gt; &lt;x&gt; &lt;y&gt; &lt;w&gt; &lt;h&gt;</span>
+  <span>CHECKBOX</span>  <span class="token_string">"test"</span>,  <span class="token_punctuation">)</span>,  <span class="token_number">2</span>,  <span class="token_number">3</span>,  <span class="token_number">4</span>,  <span class="token_number">5</span>,  <span class="token_number">6</span>
+<span style="opacity: 50%;">}</span></code>
+</pre>
+
+Note also that all of this is only true of the *close parenthesis*. The open parenthesis was not deemed worthy of the same power:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+1 RCDATA { 1, (, 2 }
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+test.rc(1) : error RC2237 : numeric value expected at 1
+test.rc(1) : error RC1013 : mismatched parentheses
+```
+
+</div>
+</div>
+
+#### `resinator`'s behavior
+
+A single close parenthesis is never a valid expression in `resinator`:
+
+```resinatorerror
+test.rc:2:20: error: expected number or number expression; got ')'
+  CHECKBOX "test", ), 2, 3, 4, 5, 6
+                   ^
+test.rc:2:20: note: the Win32 RC compiler would accept ')' as a valid expression, but it would be skipped over and potentially lead to unexpected outcomes
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk</span>
+
+### `NUL` in filenames
+
+If a filename evaluates to a string that contains a `NUL` (`0x00`) character, the Windows RC compiler treats it as a terminator. For example,
+
+```c
+1 RCDATA "hello\x00world"
+```
+
+will try to read from the file `hello`.
+
+#### `resinator`'s behavior
+
+Any evaluated filename string containing a `NUL` is an error:
+
+```resinatorerror
+test.rc:1:10: error: evaluated filename contains a disallowed codepoint: <U+0000>
+1 RCDATA "hello\x00world"
+         ^~~~~~~~~~~~~~~~
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk</span>
+
+### Unary operators are an illusion
+
+Typically, unary `+` and `-` operators are just that--operators; they are separate tokens that act on other tokens (number literals, variables, etc). However, in the Windows RC compiler, they are not real operators.
+
+---
+
+The unary `-` is included as part of a number literal, not as a distinct operator. This behavior can be confirmed in a rather strange way, taking advantage of a separate quirk described in ["*Number expressions as filenames*"](#number-expressions-as-filenames). When a resource's filename is specified as a number expression, the file path it ultimately looks for is the last number literal in the expression, so for example:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+1 FOO (567 + 123)
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+test.rc(1) : error RC2135 : file not found: 123
+```
+
+</div>
+</div>
+
+And if we throw in a unary `-` like so, then it gets included as part of the filename:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+1 FOO (567 + -123)
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+test.rc(1) : error RC2135 : file not found: -123
+```
+
+</div>
+</div>
+
+This quirk leads to a few unexpected valid patterns, since `-` on its own is also considered a valid number literal (and it resolves to `0`), so:
+
+```c
+1 FOO { 1-- }
+```
+
+evaluates to `1-0` and results in `1` being written to the resource's data, while:
+
+```c
+1 FOO { "str" - 1 }
+```
+
+looks like a string literal minus 1, but it's actually interpreted as 3 separate raw data values (`str`, `-` [which evaluates to 0], and `1`), since commas between data values in a raw data block are optional.
+
+Additionally, it means that otherwise valid looking expressions may not actually be considered valid:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+1 FOO (567 + -123)
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+test.rc(1) : error RC2135 : file not found: -123
+```
+
+</div>
+</div>
+
+---
+
+The unary `+` is almost entirely a hallucination; it can be used in some places, but not others, without any discernible rhyme or reason.
+
+This is valid (and the parameters evaluate to `1`, `2`, `3`, `4` as expected):
+
+```c
+1 DIALOG +1, +2, +3, +4 {}
+```
+
+but this is an error:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+1 FOO { +123 }
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+test.rc(1) : error RC2164 : unexpected value in RCDATA
+```
+
+</div>
+</div>
+
+and so is this:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+1 DIALOG (+1), 2, 3, 4 {}
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+test.rc(1) : error RC2237 : numeric value expected at DIALOG
+```
+
+</div>
+</div>
+
+Because the rules around the unary `+` are so opaque, I am unsure if it shares many of the same properties as the unary `-`. I do know, though, that `+` on its own does not seem to be an accepted number literal in any case I've seen so far.
+
+#### `resinator`'s behavior
+
+`resinator` matches the Windows RC compiler's behavior around unary `-`, but disallows unary `+` entirely:
+
+```resinatorerror
+test.rc:1:10: error: expected number or number expression; got '+'
+1 DIALOG +1, +2, +3, +4 {}
+         ^
+test.rc:1:10: note: the Win32 RC compiler may accept '+' as a unary operator here, but it is not supported in this implementation; consider omitting the unary +
 ```
 
 </div>
@@ -1091,6 +1938,92 @@ test.rc:1:12: error: expected number or number expression; got 'NOT'
 .not-eval-border {
   border-color: #111;
 }
+}
+
+.bitmappixels {
+  display: grid; 
+  grid-template-columns: repeat(7, 1fr); 
+  grid-template-rows: minmax(50px, 1fr);
+  gap: 5px 5px;
+  text-align: center;
+}
+.bitmapcolors {
+  display: grid; 
+  grid-template-columns: 1fr 6fr; 
+  grid-template-rows: 1fr; 
+  gap: 5px 5px; 
+  grid-template-areas: 
+    "colorlabels colortable";
+  text-align: center;
+}
+.bitmapcolors .colortable {
+  display: grid; 
+  grid-template-columns: 1fr 1fr 1fr; 
+  grid-template-rows: 1fr; 
+  gap: 5px 5px;
+  grid-area: colortable; 
+}
+.bitmapcolors .colorentry {
+  display: grid; 
+  grid-template-columns: 1fr 1fr 1fr 1fr; 
+  grid-template-rows: minmax(50px, 1fr) minmax(50px, 1fr) minmax(50px, 1fr); 
+  gap: 5px 5px; 
+  grid-template-areas: 
+    "colori colori colori colori"
+    ". . . ."
+    "finalcolor finalcolor finalcolor finalcolor";
+}
+.bitmapcolors .colori { grid-area: colori; }
+.bitmapcolors .finalcolor { grid-area: finalcolor; }
+.bitmapcolors .colorlabels {
+  display: grid; 
+  grid-template-columns: 1fr; 
+  grid-template-rows: minmax(50px, 1fr) minmax(50px, 1fr) minmax(50px, 1fr); 
+  gap: 5px 5px; 
+  grid-template-areas: 
+    "."
+    "."
+    "."; 
+  grid-area: colorlabels; 
+  font-style: italic;
+}
+
+.bitmapcolors .colorlabels > *, .bitmapcolors .colori, .bitmapcolors .colorentry > *, .bitmappixels > * {
+  display: grid;
+  align-items: center;
+  justify-items: center;
+}
+.bitmapcolors .textbg, .bitmappixels .textbg {
+  background: #ddd;
+  border-radius: 1em;
+  padding: 0 10px;
+}
+@media (prefers-color-scheme: dark) {
+.bitmapcolors .textbg, .bitmappixels .textbg {
+  background: #111;
+}
+}
+
+@media only screen and (min-width: 900px) {
+  .short-rc-and-result {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    grid-gap: 10px;
+  }
+}
+
+.grid-max-2-col {
+  --grid-layout-gap: 10px;
+  --grid-column-count: 2;
+  --grid-item--min-width: 300px;
+
+  --gap-count: calc(var(--grid-column-count) - 1);
+  --total-gap-width: calc(var(--gap-count) * var(--grid-layout-gap));
+  --grid-item--max-width: calc((100% - var(--total-gap-width)) / var(--grid-column-count));
+
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(max(var(--grid-item--min-width), var(--grid-item--max-width)), 1fr));
+  grid-gap: var(--grid-layout-gap);
 }
 </style>
 
