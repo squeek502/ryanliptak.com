@@ -1,10 +1,10 @@
-Inspired by an [accepted proposal](https://github.com/ziglang/zig/issues/3702) for [Zig](https://ziglang.org/) to include support for compiling Windows resource script (`.rc`) files, I set out on what I thought at the time would be a somewhat straightforward side-project of writing a Windows resource compiler in Zig. I figured that, since there are multiple existing open source projects with similar goals (`windres`, `llvm-rc`--both are cross-platform Windows resource compilers), I could use them as a reference, and that the syntax of `.rc` files didn't look too complicated.
+Inspired by an [accepted proposal](https://github.com/ziglang/zig/issues/3702) for [Zig](https://ziglang.org/) to include support for compiling Windows resource script (`.rc`) files, I set out on what I thought at the time would be a somewhat straightforward side-project of writing a Windows resource compiler in Zig. I figured that, since there are multiple existing open source projects with similar goals (`windres`, `llvm-rc`&mdash;both are cross-platform Windows resource compilers), I could use them as a reference, and that the syntax of `.rc` files didn't look too complicated.
 
 **I was wrong on both counts.**
 
 While the `.rc` syntax *in theory* is not complicated, there are edge cases hiding around every corner, and each of the existing alternative Windows resource compilers handle each edge case very differently from the canonical Microsoft implementation.
 
-With a goal of byte-for-byte-identical-outputs (and possible bug-for-bug compatibility) for my implementation, I had to effectively start from scratch, as even [the Windows documentation couldn't be fully trusted to be accurate](https://github.com/MicrosoftDocs/win32/pulls?q=is%3Apr+author%3Asqueek502). Ultimately, I went with fuzz testing (with `rc.exe` as the source of truth/oracle) as my method of choice for deciphering the behavior of the Windows resource compiler (this is similar to something I did [with Lua](https://www.ryanliptak.com/blog/fuzzing-as-test-case-generator/) a while back).
+With a goal of byte-for-byte-identical-outputs (and possible bug-for-bug compatibility) for my implementation, I had to effectively start from scratch, as even [the Windows documentation couldn't be fully trusted to be accurate](https://github.com/MicrosoftDocs/win32/pulls?q=is%3Apr+author%3Asqueek502). Ultimately, I went with fuzz testing (with `rc.exe` as the source of truth/oracle) as my method of choice for deciphering the behavior of the Windows resource compiler (this approach is similar to something I did [with Lua](https://www.ryanliptak.com/blog/fuzzing-as-test-case-generator/) a while back).
 
 This process led to a few things:
 
@@ -12,7 +12,7 @@ This process led to a few things:
 - A high degree of compatibility with the `rc.exe` implementation, including [byte-for-byte identical outputs](https://github.com/squeek502/win32-samples-rc-tests/) for a sizable corpus of Microsoft-provided sample `.rc` files (~500 files)
 - A large list of strange/interesting/baffling behaviors of the Windows resource compiler
 
-My resource compiler implementation, [`resinator`](https://github.com/squeek502/resinator), has now reached relative maturity and has [been merged into the Zig compiler](https://www.ryanliptak.com/blog/zig-is-a-windows-resource-compiler/), so I thought it might be interesting to write about all the weird stuff I found along the way.
+My resource compiler implementation, [`resinator`](https://github.com/squeek502/resinator), has now reached relative maturity and has [been merged into the Zig compiler](https://www.ryanliptak.com/blog/zig-is-a-windows-resource-compiler/) (but is also maintained as a standalone project), so I thought it might be interesting to write about all the weird stuff I found along the way.
 
 <p><aside class="note">
 
@@ -22,21 +22,19 @@ Note: While this list is thorough, it is only indicative of my current understan
 
 ## Who is this for?
 
-- If you work at Microsoft, consider this a large list of bug reports (in particular, see everything labeled 'miscompilation')
+- If you work at Microsoft, consider this a large list of bug reports (of particular note, see everything labeled 'miscompilation')
   + If you're [Raymond Chen](https://devblogs.microsoft.com/oldnewthing/author/oldnewthing), then consider this an extension/homage to all the (fantastic, very helpful) blog posts about Windows resources in [The Old New Thing](https://devblogs.microsoft.com/oldnewthing/)
 - If you are a contributor to `llvm-rc`, `windres`, or `wrc`, consider this a long list of behaviors to test for (if strict compatibility is a goal)
+- If you are someone that managed to [endure the bad audio of this talk I gave about my resource compiler](https://www.youtube.com/watch?v=RZczLb_uI9E) and wanted more, consider this an extension of that talk
 - If you are none of the above, consider this an entertaining list of bizarre bugs/edge cases
 
-If you have no familiarity with `.rc` files at all, no need to worry--I have tried to organize this post in order to get you up to speed as-you-read. However, if you'd instead like to skip around and check out the strangest bugs/quirks, `Ctrl+F` for 'utterly baffling'.
+If you have no familiarity with `.rc` files at all, no need to worry&mdash;I have tried to organize this post in order to get you up to speed as-you-read. However, if you'd instead like to skip around and check out the strangest bugs/quirks, `Ctrl+F` for 'utterly baffling'.
 
 ## A brief intro to resource compilers
 
 `.rc` files (resource definition-script files) are scripts that contain both C/C++ preprocessor commands and resource definitions. We'll ignore the preprocessor for now and focus on resource definitions. One possible resource definition might look like this:
 
-```c
-    1    FOO  { "bar" }
-// <id> <type> <data>
-```
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">id<i></i></span><span class="subject"><span class="token_number">1</span></span></span> <span class="annotation"><span class="desc">type<i></i></span><span class="subject"><span class="token_identifier">FOO</span></span></span> <span class="token_punctuation">{</span> <span class="annotation"><span class="desc">data<i></i></span><span class="subject"><span class="token_string">"bar"</span></span></span> <span class="token_punctuation">}</span></code></pre>
 
 The `1` is the ID of the resource, which can be a number (ordinal) or literal (name). The `FOO` is the type of the resource, and in this case it's a user-defined type with the name `FOO`. The `{ "bar" }` is a block that contains the data of the resource, which in this case is the string literal `"bar"`. Not all resource definitions look exactly like this, but the `<id> <type>` part is fairly common.
 
@@ -105,11 +103,10 @@ So, following from this, let's try wrapping the resource type name in double quo
 
 Intuitively, you might expect that this doesn't change anything (i.e. it'll still get parsed into `FOO`), but in fact the Windows RC compiler will now include the quotes in the user-defined type name. That is, `"FOO"` will be written as the resource type name in the `.res` file, not `FOO`.
 
-This is because both resource IDs and resource types use special tokenization rules--they are basically only terminated by whitespace and nothing else (well, not exactly whitespace, it's actually any ASCII character from `0x05` to `0x20` [inclusive]). As an example:
+This is because both resource IDs and resource types use special tokenization rules&mdash;they are basically only terminated by whitespace and nothing else (well, not exactly whitespace, it's actually any ASCII character from `0x05` to `0x20` [inclusive]). As an example:
 
-```c
-L"\r\n"123abc error{OutOfMemory}!?u8 { "bar" }
-```
+<pre><code class="language-c"><span class="token_tag">L"\r\n"123abc</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_class-name">error{OutOfMemory}!?u8</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_punctuation">{</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_string">"bar"</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_punctuation">}</span><span class="token_ansi_c_whitespace token_whitespace">
+</span></code></pre>
 
 <p><aside class="note">Reminder: Resource IDs don't have to be integers</aside></p>
 
@@ -514,7 +511,7 @@ Even more bizarre, this disjointedness can only occur via the first `#pragma cod
 1 RCDATA { "Ó" }
 ```
 
-With this, still saved as Windows-1252, the code page from the CLI option no longer matters--even when compiled with `/c65001`, the `0xD3` in the file is both interpreted as Windows-1252 (`Ó`) *and* outputted as Windows-1252 (`0xD3`).
+With this, still saved as Windows-1252, the code page from the CLI option no longer matters&mdash;even when compiled with `/c65001`, the `0xD3` in the file is both interpreted as Windows-1252 (`Ó`) *and* outputted as Windows-1252 (`0xD3`).
 
 In other words, this is how things seem to work:
 
@@ -844,7 +841,7 @@ Which will print:
 alue
 ```
 
-The problems don't end there, though--`VERSIONINFO` is compiled into a tree structure, meaning the misreading of one node affects the reading of future nodes. Here's a (simplified) real-world `VERSIONINFO` resource definition from a `.rc` file in [Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples):
+The problems don't end there, though&mdash;`VERSIONINFO` is compiled into a tree structure, meaning the misreading of one node affects the reading of future nodes. Here's a (simplified) real-world `VERSIONINFO` resource definition from a `.rc` file in [Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples):
 
 ```c
 VS_VERSION_INFO VERSIONINFO
@@ -1663,6 +1660,8 @@ test.rc(1) : error RC1013 : mismatched parentheses
 </div>
 </div>
 
+Instead, `(` was [bestowed a different power](#the-strange-power-of-the-sociable-open-parenthesis).
+
 #### `resinator`'s behavior
 
 A single close parenthesis is never a valid expression in `resinator`:
@@ -1672,6 +1671,54 @@ test.rc:2:20: error: expected number or number expression; got ')'
   CHECKBOX "test", ), 2, 3, 4, 5, 6
                    ^
 test.rc:2:20: note: the Win32 RC compiler would accept ')' as a valid expression, but it would be skipped over and potentially lead to unexpected outcomes
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk, utterly baffling</span>
+
+### The strange power of the sociable open parenthesis
+
+While the [close parenthesis](#the-strange-power-of-the-lonely-close-parenthesis) has a bug/quirk involving being isolated, the open parenthesis has a bug/quirk regarding being snug up against another token.
+
+This is (somehow) allowed:
+
+```c
+1 DIALOGEX 1(, (2, (3(, ((((4(((( {}
+```
+
+And in the above case, the parameters are interpreted as if the `(` characters don't exist, e.g. they compile to the values `1`, `2`, `3`, and `4`.
+
+This power of `(` does not have infinite reach, though&mdash;in other places a `(` leads to an mismatched parentheses error as you might expect:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+1 RCDATA { 1, (2, 3, 4 }
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+test.rc(1) : error RC1013 : mismatched parentheses
+```
+
+</div>
+</div>
+
+There's no chance I'm interested in bug-for-bug compatibility with this behavior, so I haven't investigated it beyond the shallow examples above. I'm sure there are more strange implications of this bug lurking for those willing to dive deeper.
+
+#### `resinator`'s behavior
+
+An unclosed open parenthesis is always an error `resinator`:
+
+```resinatorerror
+test.rc:1:14: error: expected number or number expression; got ','
+1 DIALOGEX 1(, (2, (3(, ((((4(((( {}
+             ^
 ```
 
 </div>
@@ -1706,7 +1753,7 @@ test.rc:1:10: error: evaluated filename contains a disallowed codepoint: <U+0000
 
 ### Unary operators are an illusion
 
-Typically, unary `+` and `-` operators are just that--operators; they are separate tokens that act on other tokens (number literals, variables, etc). However, in the Windows RC compiler, they are not real operators.
+Typically, unary `+`, `-`, etc. operators are just that&mdash;operators; they are separate tokens that act on other tokens (number literals, variables, etc). However, in the Windows RC compiler, they are not real operators.
 
 ---
 
@@ -1768,18 +1815,59 @@ Additionally, it means that otherwise valid looking expressions may not actually
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
 ```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
-1 FOO (567 + -123)
+1 FOO { (-(123)) }
 ```
 
 </div>
 <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
 ```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
-test.rc(1) : error RC2135 : file not found: -123
+test.rc(1) : error RC1013 : mismatched parentheses
 ```
 
 </div>
 </div>
+
+---
+
+The unary NOT (`~`) works exactly the same as the unary `-` and has all the same quirks. For example, a `~` on its own is also a valid number literal:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+1 FOO { ~ }
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+Data is a u16 with the value 0xFFFF
+```
+
+</div>
+</div>
+
+And `~L` (to turn the integer into a `u32`) is valid in the same way that `-L` would be valid:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+1 FOO { ~L }
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+Data is a u32 with the value 0xFFFFFFFF
+```
+
+</div>
+</div>
+
 
 ---
 
@@ -1833,7 +1921,7 @@ Because the rules around the unary `+` are so opaque, I am unsure if it shares m
 
 #### `resinator`'s behavior
 
-`resinator` matches the Windows RC compiler's behavior around unary `-`, but disallows unary `+` entirely:
+`resinator` matches the Windows RC compiler's behavior around unary `-`/`~`, but disallows unary `+` entirely:
 
 ```resinatorerror
 test.rc:1:10: error: expected number or number expression; got '+'
@@ -1841,6 +1929,445 @@ test.rc:1:10: error: expected number or number expression; got '+'
          ^
 test.rc:1:10: note: the Win32 RC compiler may accept '+' as a unary operator here, but it is not supported in this implementation; consider omitting the unary +
 ```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk, utterly baffling</span>
+
+### `CONTROL`: "I'm just going to pretend I didn't see that"
+
+Within `DIALOG`/`DIALOGEX` resources, there are predefined controls like `PUSHBUTTON`, `CHECKBOX`, etc, which are actually just syntactic sugar for generic `CONTROL` statements with particular default values for the "class name" and "style" parameters.
+
+For example, these two statements are equivalent:
+
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">class<i></i></span><span class="subject"><span class="token_identifier">CHECKBOX</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">text<i></i></span><span class="subject"><span class="token_string">"foo"</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">id<i></i></span><span class="subject"><span class="token_number">1</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">x<i></i></span><span class="subject"><span class="token_number">2</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">y<i></i></span><span class="subject"><span class="token_number">3</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">w<i></i></span><span class="subject"><span class="token_number">4</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">h<i></i></span><span class="subject"><span class="token_number">5</span></span></span></code></pre>
+
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">class<i></i></span><span class="subject"><span class="token_identifier">CONTROL</span></span></span><span class="token_punctuation">,</span> <span class="token_string">"foo"</span><span class="token_punctuation">,</span> <span class="token_number">1</span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">class name<i></i></span><span class="subject"><span class="token_identifier">BUTTON</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">style<i></i></span><span class="subject"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span></span></span><span class="token_punctuation">,</span> <span class="token_number">2</span><span class="token_punctuation">,</span> <span class="token_number">3</span><span class="token_punctuation">,</span> <span class="token_number">4</span><span class="token_punctuation">,</span> <span class="token_number">5</span></code></pre>
+
+There is something bizarre about the "style" parameter of a generic control statement, though. For whatever reason, it allows an extra token within it and will act as if it doesn't exist.
+
+<pre style="margin-top: 3em; overflow: visible; white-space: pre-wrap;"><code class="language-c" style="white-space: inherit;"><span style="opacity:50%;">CONTROL, "text", 1, BUTTON,</span> <span style="outline:2px dotted blue; position:relative; display:inline-block;"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span> <span class="token_string">"why is this allowed"</span><span class="hexdump-tooltip rcdata">style<i></i></span></span><span style="opacity: 50%;">, 2, 3, 4, 5</span></code></pre>
+
+The `"why is this allowed"` string is completely ignored, and this `CONTROL` will be compiled exactly the same as the previous `CONTROL` statement shown above.
+
+- This bug/quirk requires there to be no comma before the extra token. In the above example, if there is a comma between the `BS_CHECKBOX | WS_TABSTOP` and the `"why is this allowed"`, then it will (properly) error with `expected numerical dialog constant`
+- This bug/quirk is specific to the `style` parameter of `CONTROL` statements. In non-generic controls, the style parameter is optional and comes after the `h` parameter, but it does not exhibit this behavior
+
+The extra token can be many things (string, number, `=`, etc), but not *anything*. For example, if the extra token is `;`, then it will error with `expected numerical dialog constant`.
+
+#### `CONTROL`: "Okay, I see that expression, but I don't understand it"
+
+Instead of a single extra token in the `style` parameter of a `CONTROL`, it's also possible to stick an extra number expression in there like so:
+
+<pre style="margin-top: 3em; overflow: visible; white-space: pre-wrap;"><code class="language-c" style="white-space: inherit;"><span style="opacity:50%;">CONTROL, "text", 1, BUTTON,</span> <span style="outline:2px dotted blue; position:relative; display:inline-block;"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span> <span class="token_punctuation">(</span><span class="token_number">7</span><span class="token_operator">+</span><span class="token_number">8</span><span class="token_punctuation">)</span><span class="hexdump-tooltip rcdata">style<i></i></span></span><span style="opacity: 50%;">, 2, 3, 4, 5</span></code></pre>
+
+In this case, the Windows RC compiler no longer ignores the expression, but still behaves strangely. Instead of the entire `(7+8)` expression being treated as the `x` parameter like you might expect, in this case *only the* `8` in the expression is treated as the `x` parameter, so it ends up interpreted like this:
+
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span style="opacity:50%;">CONTROL, "text", 1, BUTTON,</span> <span class="annotation"><span class="desc">style<i></i></span><span class="subject"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span></span></span> <span style="opacity:50%;">(7+</span><span class="annotation"><span class="desc">x<i></i></span><span class="subject"><span class="token_number">8</span></span></span><span style="opacity:50%;">)</span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">y<i></i></span><span class="subject"><span class="token_number">2</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">w<i></i></span><span class="subject"><span class="token_number">3</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">h<i></i></span><span class="subject"><span class="token_number">4</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">exstyle<i></i></span><span class="subject"><span class="token_number">5</span></span></span></code></pre>
+
+My guess is that the similarity between this number-expression-related-behavior and ["*Number expressions as filenames*"](#number-expressions-as-filenames) is not a coincidence.
+
+#### `resinator`'s behavior
+
+Such extra tokens/expressions are never ignored by `resinator`; they are always treated as the `x` parameter, and a warning is emitted if there is no comma between the `style` and `x` parameters.
+
+```resinatorerror
+test.rc:4:57: warning: this token could be erroneously skipped over by the Win32 RC compiler
+  CONTROL, "text", 1, BUTTON, 0x00000002L | 0x00010000L "why is this allowed", 2, 3, 4, 5
+                                                        ^~~~~~~~~~~~~~~~~~~~~
+test.rc:4:57: note: this line originated from line 4 of file 'test.rc'
+  CONTROL, "text", 1, BUTTON, BS_CHECKBOX | WS_TABSTOP "why is this allowed", 2, 3, 4, 5
+
+test.rc:4:31: note: to avoid the potential miscompilation, consider adding a comma after the style parameter
+  CONTROL, "text", 1, BUTTON, 0x00000002L | 0x00010000L "why is this allowed", 2, 3, 4, 5
+                              ^~~~~~~~~~~~~~~~~~~~~~~~~
+test.rc:4:57: error: expected number or number expression; got '"why is this allowed"'
+  CONTROL, "text", 1, BUTTON, 0x00000002L | 0x00010000L "why is this allowed", 2, 3, 4, 5
+                                                        ^~~~~~~~~~~~~~~~~~~~~
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk</span>
+
+### L is not allowed there
+
+Like in C, an integer literal can be suffixed with `L` to signify that it is a 'long' integer literal. In the case of the Windows RC compiler, integer literals are typically 16 bits wide, and suffixing an integer literal with `L` will instead make it 32 bits wide.
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+<pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+  <code class="language-c"><span class="token_number">1</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_identifier">RCDATA</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_punctuation">{</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_number" style="outline: 1px dashed red; padding: 0 3px;">1</span><span class="token_punctuation">,</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_number" style="outline: 1px dashed orange; padding: 0 3px;">2L</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_punctuation">}</span><span class="token_ansi_c_whitespace token_whitespace">
+</span></code>
+</pre>
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+<pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
+  <code class="language-none"><span style="outline: 1px dashed red;">01 00</span> <span style="outline: 1px dashed orange;">02 00 00 00</span></code>
+</pre>
+
+</div>
+</div>
+<p style="margin:0; text-align: center;"><i class="caption">A <code>RCDATA</code> resource definition and a hexdump of the resulting data in the <code>.res</code> file</i></p>
+
+However, outside of raw data blocks like the `RCDATA` example above, the `L` suffix is typically meaningless, as it has no bearing on the size of the integer used. For example, `DIALOG` resources have `x`, `y`, `width`, and `height` parameters, and they are each encoded in the data as a `u16` regardless of the integer literal used. If the value would overflow a `u16`, then the value is truncated back down to a `u16`, meaning in the following example all 4 parameters after `DIALOG` get compiled down to `1` as a `u16`:
+
+```c
+1 DIALOG 1, 1L, 65537, 65537L {}
+```
+
+A few particular parameters, though, fully disallow integer literals with the `L` suffix from being used:
+
+- Any of the four parameters of the `FILEVERSION` statement of a `VERSIONINFO` resource
+- Any of the four parameters of the `PRODUCTVERSION` statement of a `VERSIONINFO` resource
+- Any of the two parameters of a `LANGUAGE` statement
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+LANGUAGE 1L, 2
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+test.rc(1) : error RC2145 : PRIMARY LANGUAGE ID too large
+```
+
+</div>
+</div>
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+1 VERSIONINFO
+  FILEVERSION 1L, 2, 3, 4
+BEGIN
+END
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"
+test.rc(2) : error RC2127 : version WORDs separated by commas expected
+```
+
+</div>
+</div>
+
+It is true that these parameters are limited to `u16`, so using an `L` suffix is likely a mistake, but that is also true of many other parameters for which the Windows RC compiler happily allows `L` suffixed numbers for. It's unclear why these particular parameters are singled out, and even more unclear given the fact that specifying these parameters using an integer literal that would overflow a `u16` does not actually trigger an error (and instead it truncates the values to a `u16`):
+
+```c
+1 VERSIONINFO
+  FILEVERSION 65537, 65538, 65539, 65540
+BEGIN
+END
+```
+
+The compiled `FILEVERSION` in this case will be `1`, `2`, `3`, `4`:
+
+```
+65537 = 0x10001; truncated to u16 = 0x0001
+65538 = 0x10002; truncated to u16 = 0x0002
+65539 = 0x10003; truncated to u16 = 0x0003
+65540 = 0x10004; truncated to u16 = 0x0004
+```
+
+#### `resinator`'s behavior
+
+`resinator` allows `L` suffixed integer literals everywhere and truncates the value down to the appropriate number of bits when necessary.
+
+```resinatorerror
+test.rc:1:10: warning: this language parameter would be an error in the Win32 RC compiler
+LANGUAGE 1L, 2
+         ^~
+test.rc:1:10: note: to avoid the error, remove any L suffixes from numbers within the parameter
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">miscompilation, crash</span>
+
+### No one has thought about `FONT` resources for decades
+
+As far as I can tell, the `FONT` resource has exactly one purpose: creating `.fon` files, which are resource-only `.dll`s (i.e. a `.dll` with resources, but no entry point) renamed to have a `.fon` extension. Such `.fon` files contain a collection of fonts in the obsolete `.fnt` font format.
+
+The `.fon` format is also mostly obsolete, but is still supported in modern Windows, and Windows *still* ships with some `.fon` files included:
+
+<div style="text-align: center;">
+<img style="margin-left:auto; margin-right:auto; display: block;" src="/images/every-rc-exe-bug-quirk-probably/windows-10-fon.png">
+<p style="margin-top: .5em;"><i class="caption">The <code>Terminal</code> font included in Windows 10 is a <code>.fon</code> file</i></p>
+</div>
+
+This `.fon`-related purpose for the `FONT` resource, however, has been irrelevant for decades, and, as far as I can tell, has not worked fully correctly since the 16-bit version of the Windows RC compiler. To understand why, though, we have to understand a little bit about the `.fnt` format.
+
+In version 1 of the `.fnt` format, specified by the [Windows 1.03 SDK from 1986](https://www.os2museum.com/files/docs/win10sdk/windows-1.03-sdk-prgref-1986.pdf), the total size of all the static fields in the header was 117 bytes, with a few fields containing offsets to variable-length data elsewhere in the file. Here's a (truncated) visualization, with some relevant 'offset' fields expanded:
+
+<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;"><span style="background: rgba(0,255,0,.1);">....version....</span>
+<span style="background: rgba(0,0,255,.1);">......size.....</span>
+<span style="background: rgba(150,0,255,.1);">...copyright...</span>
+<span style="background: rgba(0,255,0,.1);">......type.....</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">.device_offset.</span> ───► <span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">NUL-terminated device name.</span>
+<span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">..face_offset..</span> ───► <span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">NUL-terminated font face name.</span>
+<span style="background: rgba(0,255,0,.1);">....bits_ptr...</span>
+<span style="background: rgba(0,0,255,.1);">..bits_offset..</span></code></pre>
+
+In [version 3 of the `.fnt` format](https://web.archive.org/web/20080115184921/http://support.microsoft.com/kb/65123) (and presumably version 2, but I can't find much info about version 2), all of the fields up to and including `bits_offset` are the same, but there are an additional 31 bytes of new fields, making for a total size of 148 bytes:  
+
+<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;"><span style="opacity: 0.5"><span style="background: rgba(0,255,0,.1);">....version....</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(0,0,255,.1);">.device_offset.</span>
+<span style="background: rgba(150,0,255,.1);">..face_offset..</span>
+<span style="background: rgba(0,255,0,.1);">....bits_ptr...</span>
+<span style="background: rgba(0,0,255,.1);">..bits_offset..</span></span>
+<span style="background: rgba(150,0,255,.1);">....reserved...</span> ◄─┐
+<span style="background: rgba(0,255,0,.1);">.....flags.....</span> ◄─┤
+<span style="background: rgba(0,0,255,.1);">.....aspace....</span> ◄─┤
+<span style="background: rgba(150,0,255,.1);">.....bspace....</span> ◄─┼── new fields
+<span style="background: rgba(0,255,0,.1);">.....cspace....</span> ◄─┤
+<span style="background: rgba(0,0,255,.1);">...color_ptr...</span> ◄─┤
+<span style="background: rgba(150,0,255,.1);">...reserved1...</span>   │
+<span style="background: rgba(150,0,255,.1);">...............</span> ◄─┘
+<span style="background: rgba(150,0,255,.1);">...............</span></code></pre>
+
+Getting back to resource compilation. `FONT` resources within `.rc` files are collected and compiled into the following resources:
+
+- A `RT_FONT` resource for each font, where the data is the verbatim file contents of the `.fnt` file
+- A `FONTDIR` resource that contains data about each font, in the format specified by [`FONTGROUPHDR`](https://learn.microsoft.com/en-us/windows/win32/menurc/fontgrouphdr)
+  + side note: the string `FONTDIR` is the type of this resource, it doesn't have an associated integer ID like most other Windows-defined resources do
+
+Within the `FONTDIR` resource, there is a [`FONTDIRENTRY`](https://learn.microsoft.com/en-us/windows/win32/menurc/fontdirentry) for each font, containing much of the information in the `.fnt` header. In fact, the data actually matches the version 1 `.fnt` header almost exactly, with only a few differences at the end:
+
+<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;">.fnt version 1      FONTDIRENTRY
+<span></span>
+<span style="background: rgba(0,255,0,.1);">....version....</span> == <span style="background: rgba(0,255,0,.1);">...dfVersion...</span>
+<span style="background: rgba(0,0,255,.1);">......size.....</span> == <span style="background: rgba(0,0,255,.1);">.....dfSize....</span>
+<span style="background: rgba(150,0,255,.1);">...copyright...</span> == <span style="background: rgba(150,0,255,.1);">..dfCopyright..</span>
+<span style="background: rgba(0,255,0,.1);">......type.....</span> == <span style="background: rgba(0,255,0,.1);">.....dfType....</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span> == <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span> == <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(0,0,255,.1);">.device_offset.</span> == <span style="background: rgba(0,0,255,.1);">....dfDevice...</span>
+<span style="background: rgba(150,0,255,.1);">..face_offset..</span> == <span style="background: rgba(150,0,255,.1);">.....dfFace....</span>
+<span style="background: rgba(0,255,0,.1);">....bits_ptr...</span> =? <span style="background: rgba(0,255,0,.1);">...dfReserved..</span>
+<span style="background: rgba(0,0,255,.1);">..bits_offset..</span>    <span style="background: rgba(255,0,0,.1);">NUL-terminated device name.</span>
+                   <span style="background: rgba(255,150,0,.1);">NUL-terminated font face name.</span></code></pre>
+<p style="margin:0; text-align: center;"><i class="caption">The formats match, except <code>FONTDIRENTRY</code> does not include <code>bits_offset</code> and instead it has trailing variable-length strings</i></p>
+
+This documented `FONTDIRENTRY` *is* what the obsolete 16-bit version of `rc.exe` outputs: 113 bytes plus two variable-length `NUL`-terminated strings at the end. However, starting with the 32-bit resource compiler, contrary to the documentation, `rc.exe` now outputs `FONTDIRENTRY` as 148 bytes plus the two variable-length `NUL`-terminated strings.
+
+You might notice that this 148 number has come up before; it's the size of the `.fnt` version 3 header. So, starting with the 32-bit `rc.exe`, `FONTDIRENTRY` as-written-by-the-resource-compiler is effectively the first 148 bytes of the `.fnt` file, plus the two strings located at the positions given by the `device_offset` and `face_offset` fields. Or, at least, that's clearly the intention, but this is labeled 'miscompilation' for a reason.
+
+Let's take this example `.fnt` file for instance:
+
+<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;"><span style="background: rgba(0,255,0,.1);">....version....</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">.device_offset.</span> ───► <span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">some device.</span>
+<span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">..face_offset..</span> ───► <span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">some font face.</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(150,0,255,.1);">...reserved1...</span>
+<span style="background: rgba(150,0,255,.1);">...............</span>
+<span style="background: rgba(150,0,255,.1);">...............</span></code></pre>
+
+When compiled with the old 16-bit Windows RC compiler, `some device` and `some font face` are written as trailing strings in the `FONTDIRENTRY` (as expected), but when compiled with the modern `rc.exe`, both strings get written as 0-length (only a `NUL` terminator). The reason why is rather silly, so let's go through it. Here's the documented `FONTDIRENTRY` format again, this time with some annotations:
+
+<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;">      FONTDIRENTRY
+<span></span>
+-113 <span style="background: rgba(0,255,0,.1);">...dfVersion...</span> (2 bytes)
+-111 <span style="background: rgba(0,0,255,.1);">.....dfSize....</span> (4 bytes)
+-107 <span style="background: rgba(150,0,255,.1);">..dfCopyright..</span> (60 bytes)
+ -47 <span style="background: rgba(0,255,0,.1);">.....dfType....</span> (2 bytes)
+     <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+     <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+ -12 <span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">....dfDevice...</span> (4 bytes)
+  -8 <span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">.....dfFace....</span> (4 bytes)
+  -4 <span style="background: rgba(0,255,0,.1);">...dfReserved..</span> (4 bytes)</code></pre>
+<p style="margin:0; text-align: center;"><i class="caption">The numbers on the left represent the offset from the end of the <code>FONTDIRENTRY</code> data to the start of the field</i></p>
+
+It turns out that the Windows RC compiler uses the offset *from the end of `FONTDIRENTRY`* to get the values of the `dfDevice` and `dfFace` fields. This works fine when those offsets are unchanging, but, as we've seen, the Windows RC compiler now uses an undocumented `FONTDIRENTRY` definition that is is 35 bytes longer, but these hardcoded offsets were never updated accordingly. This means that the Windows RC compiler is actually attempting to read the `dfDevice` and `dfFace` fields from this part of the `.fnt` version 3 header:
+
+<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;">    <span style="background: rgba(0,255,0,.1);">....version....</span>
+    <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+    <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+    <span style="background: rgba(0,0,255,.1);">.device_offset.</span>
+    <span style="background: rgba(150,0,255,.1);">..face_offset..</span>
+    <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+    <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+-12 <span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(255,50,50,1);">...reserved1...</span> ───► <span style="background: rgba(255,0,0,.1); outline: 2px dotted rgba(255,50,50,1);">???</span>
+ -8 <span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(255,150,0,1);">...............</span> ───► <span style="background: rgba(255,150,0,.1); outline: 2px dotted rgba(255,150,0,1);">???</span>
+ -4 <span style="background: rgba(150,0,255,.1);">...............</span></code></pre>
+<p style="margin:0; text-align: center;"><i class="caption">The Windows RC compiler reads data from the <code>reserved1</code> field and interprets it as <code>dfDevice</code> and <code>dfFace</code></i></p>
+
+Because this bug happens to end up reading data from a reserved field, it's very likely for that data to just contain zeroes, which means it will try to read the `NUL`-terminated strings starting at offset `0` from the start of the file. As a second coincidence, the first field of a `.fnt` file is a `u16` containing the version, and the only versions I'm aware of are:
+
+- Version 1, `0x0100` encoded as little-endian, so the bytes at offset 0 are `00 01`
+- Version 2, `0x0200` encoded as little-endian, so the bytes at offset 0 are `00 02`
+- Version 3, `0x0300` encoded as little-endian, so the bytes at offset 0 are `00 03`
+
+In all three cases, the first byte is `0x00`, meaning attempting to read a `NUL` terminated string from offset `0` always ends up with a 0-length string for all known/valid `.fnt` versions. So, in practice, the Windows RC compiler almost always writes the trailing `szDeviceName` and `szFaceName` strings as 0-length strings.
+
+<p><aside class="note">
+
+As a final coincidence, the offset here is `-12` and `-8` only because the original `FONTDIRENTRY` definition chose to omit the `bits_offset` field from the `.fnt` version 1 format. If it contained the full `.fnt` version 1 header data, the `dfDevice` offset would have been `-16`, meaning it would have ended up interpreting the `color_ptr` field of the `.fnt` version 3 format as an offset instead, likely leading to more bogus (&gt; 0-length) strings being written to the trailing data (and therefore possibly leading to this bug being found/fixed earlier).
+
+</aside></p>
+
+This behavior can be confirmed by crafting a `.fnt` file with actual offsets to `NUL`-terminated strings within the reserved data field that the Windows RC compiler erroneously reads from:
+
+<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;"><span style="background: rgba(0,255,0,.1);">....version....</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">.device_offset.</span> ───► <span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">some device.</span>
+<span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">..face_offset..</span> ───► <span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">some font face.</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(255,50,50,1);">...reserved1...</span> ───► <span style="background: rgba(255,0,0,.1); outline: 2px dotted rgba(255,50,50,1);">i dare you to read me.</span>
+<span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(255,150,0,1);">...............</span> ───► <span style="background: rgba(255,150,0,.1); outline: 2px dotted rgba(255,150,0,1);">you wouldn't.</span>
+<span style="background: rgba(150,0,255,.1);">...............</span></code></pre>
+
+Compiling such a `FONT` resource, we do indeed see that the strings `i dare you to read me` and `you wouldn't` are written to the `FONTDIRENTRY` for this `FONT` rather than `some device` and `some font face`.
+
+#### Does any of this even matter?
+
+Well, no, not really. The whole concept of the `FONTDIR` containing information about all the `RT_FONT` resources is something of a historical relic, likely only relevant when resources were constrained enough that having an overview of the font data all in once place allowed for optimization opportunities that made a difference.
+
+From what I can tell, though, on modern Windows, the `FONTDIR` resource is ignored entirely:
+- Linker implementations will happily link `.res` files that contain `RT_FONT` resources with no `FONTDIR` resource
+- Windows will happily load/install `.fon` files that contain `RT_FONT` resources with no `FONTDIR` resource
+
+However, there are a few caveats...
+
+#### Misuse of the `FONT` resource for non-`.fnt` fonts
+
+I'm not sure how prevalent this is, but it can be forgiven that someone might not realize that `FONT` is only intended to be used with a font format that has been obsolete for multiple decades, and try to use the `FONT` resource with a modern font format.
+
+In fact, there is one Microsoft-provided [`Windows-classic-samples`](https://github.com/microsoft/Windows-classic-samples) example program that uses `FONT` resources with `.ttf` files to include custom fonts in a program: [`Win7Samples/multimedia/DirectWrite/CustomFont`](https://github.com/microsoft/Windows-classic-samples/tree/main/Samples/Win7Samples/multimedia/DirectWrite/CustomFont). This is meant to be an example of using [the DirectWrite APIs described here](https://learn.microsoft.com/en-us/windows/win32/directwrite/custom-font-collections), but this is almost certainly a misuse of the `FONT` resource. [Other examples](https://github.com/microsoft/Windows-classic-samples/tree/main/Samples/DirectWriteCustomFontSets), however, use user-defined resource types for including `.ttf` font files, which seems like the correct choice.
+
+When using non-`.fnt` files with the `FONT` resource, the resulting `FONTDIRENTRY` will be made up of garbage, since it effectively just takes the first 148 bytes of the file and stuffs it into the `FONTDIRENTRY` format. An additional complication with this is that the Windows RC compiler will still try to read `NUL`-terminated strings using the offsets from the `dfDevice` and `dfFace` fields (or at least, where it thinks they are). These offset values, in turn, will have much more variance since the format of `.fnt` and `.ttf` are so different.
+
+This means that using `FONT` with `.ttf` files may lead to errors, since...
+
+#### "Negative" offsets lead to errors
+
+For who knows what reason, the `dfDevice` and `dfFace` values are seemingly treated as signed integers, even though they ostensibly contain an offset from the beginning of the `.fnt` file, so a negative value makes no sense. When the sign bit is set in either of these fields, the Windows RC compiler will error with:
+
+```
+fatal error RW1023: I/O error seeking in file
+```
+
+This means that, for some subset of valid `.ttf` files (or other non-`.fnt` font formats), the Windows RC compiler will fail with this error.
+
+#### Other oddities and crashes
+
+- If the font file is 140 bytes or fewer, the Windows RC compiler seems to default to a `dfFace` of `0` (as the [incorrect] location of the `dfFace` field is past the end of the file).
+- If the file is 75 bytes or smaller with no `0x00` bytes, the `FONTDIR` data for it will be 149 bytes (the first `n` being the bytes from the file, then the rest are `0x00` padding bytes). After that, there will be `n` bytes from the file again, and then a final `0x00`.
+- If the file is between 76 and 140 bytes long with no `0x00` bytes, the Windows RC compiler will crash.
+
+#### `resinator`'s behavior
+
+I'm still not quite sure what the best course of action is here. I've [written up the possibilities here](https://squeek502.github.io/resinator/windows/resources/font.html#so-really-what-should-go-in-the-fontdir), and for now I've gone with what I'm calling the "semi-compatibility while avoiding the sharp edges" approach:
+
+> Do something similar enough to the Win32 compiler in the common case, but avoid emulating the buggy behavior where it makes sense. That would look like a `FONTDIRENTRY` with the following format:
+>
+> - The first 148 bytes from the file verbatim, with no interpretation whatsoever, followed by two `NUL` bytes (corresponding to 'device name' and 'face name' both being zero length strings)
+>
+> This would allow the `FONTDIR` to match byte-for-byte with the Win32 RC compiler in the common case (since very often the misinterpreted `dfDevice`/`dfFace` will be `0` or point somewhere outside the bounds of the file and therefore will be written as a zero-length string anyway), and only differ in the case where the Win32 RC compiler writes some bogus string(s) to the `szDeviceName`/`szFaceName`.
+>
+> This also enables the use-case of non-`.FNT` files without any loose ends.
+
+In short: write the new/undocumented `FONTDIRENTRY`, but avoid the crashes, avoid the negative integer-related errors, and always write `szDeviceName` and `szFaceName` as 0-length.
+
+</div>
+
+<div>
+
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk, utterly baffling</span>
+
+### Subtracting zero can lead to bizarre results
+
+This compiles:
+
+```c
+1 DIALOGEX 1, 2, 3, 4 - 0 {}
+```
+
+This doesn't:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+1 DIALOGEX 1, 2, 3, 4-0 {}
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+test.rc(1) : error RC2112 : BEGIN expected in dialog
+```
+
+</div>
+</div>
+
+I don't have a complete understanding as to why, but it seems to be related to subtracting the value zero within certain contexts.
+
+Resource definitions that compile:
+
+- `1 RCDATA { 4-0 }`
+- `1 DIALOGEX 1, 2, 3, 4--0 {}`
+- `1 DIALOGEX 1, 2, 3, 4-(0) {}`
+
+Resource definitions that error:
+
+- `1 DIALOGEX 1, 2, 3, 4-0x0 {}`
+- `1 DIALOGEX 1, 2, 3, (4-0) {}`
+
+The only additional information I have is that the following:
+
+```c
+1 DIALOGEX 1, 2, 3, 10-0x0+5 {} hello
+```
+
+will error, and with the `/verbose` flag set, `rc.exe` will output:
+
+```
+test.rc.
+test.rc(1) : error RC2112 : BEGIN expected in dialog
+
+Writing DIALOG:1,       lang:0x409,     size 0.
+test.rc(1) : error RC2135 : file not found: hello
+
+Writing {}:+5,  lang:0x409,     size 0
+```
+
+The verbose output gives us a hint that the Windows RC compiler is interpreting the `+5 {} hello` as a new resource definition like so:
+
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">id<i></i></span><span class="subject"><span class="token_number">+5</span></span></span> <span class="annotation"><span class="desc">type<i></i></span><span class="subject"><span class="token_identifier">{}</span></span></span> <span class="annotation"><span class="desc">filename<i></i></span><span class="subject"><span class="token_string">hello</span></span></span></code></pre>
+
+So, somehow, the subtraction of the zero caused the `BEGIN expected in dialog` error, and then the Windows RC compiler immediately restarted its parser state and began parsing a new resource definition from scratch. This doesn't give much insight into why subtracting zero causes an error in the first place, but I thought it was a slightly interesting additional wrinkle.
+
+#### `resinator`'s behavior
+
+`resinator` does not treat subtracting zero as special, and therefore never errors on any expressions that subtract zero.
+
+Ideally, a warning would be emitted in cases where the Windows RC compiler would error, but detecting when that would be the case is not something I'm capable of doing currently.
 
 </div>
 
@@ -1872,15 +2399,91 @@ test.rc:1:10: note: the Win32 RC compiler may accept '+' as a unary operator her
     color: rgba(255,255,255,0.75);
   }
 }
+
+pre.annotated-code {
+  overflow: visible; white-space: pre-wrap;
+  padding-bottom: calc(1em + 10px);
+}
+pre.annotated-code span {
+  display: inline-block;
+}
+pre.annotated-code .annotation {
+  margin-top: 10px;
+}
+pre.annotated-code .annotation .subject {
+  text-align: center;
+  display: block;
+}
+pre.annotated-code .desc {
+  position: relative;
+  display: block;
+  background: #E6E6E6;
+  z-index: 1;
+  padding: 0.5em 1em;
+  margin-bottom: 15px;
+  border: 1px solid #aaa;
+  white-space: pre;
+  text-align: center;
+}
+@media (prefers-color-scheme: dark) {
+pre.annotated-code .desc {
+  background: #242424;
+  border-color: #5A5A5A;
+}
+}
+pre.annotated-code .desc i {
+  position:absolute;
+  top:100%;
+  left:50%;
+  margin-left:-15px;
+  width:30px;
+  height:15px;
+  overflow:hidden;
+}
+pre.annotated-code .desc i::after {
+  content:'';
+  position:absolute;
+  width:15px;
+  height:15px;
+  left:50%;
+  transform:translate(-50%,-50%) rotate(-45deg);
+  background: #E6E6E6;
+  border: 1px solid #aaa;
+}
+@media (prefers-color-scheme: dark) {
+pre.annotated-code .desc i::after {
+  background: #242424;
+  border-color: #5A5A5A;
+}
+}
+
+.tooltip-hover .hexdump-tooltip {
+  display: none;
+}
+.tooltip-hover:hover .hexdump-tooltip {
+  display: block;
+}
 .hexdump-tooltip {
   position: absolute;
-  background: black;
+  background: #E6E6E6;
   top:-15px;
   left:50%;
   transform:translate(-50%,-100%);
   z-index: 1;
   padding: 0.5em 1em;
   border: 1px solid #aaa;
+  white-space: pre;
+}
+.hexdump-tooltip.below {
+  top: auto;
+  bottom: -15px;
+  transform:translate(-50%,100%);
+}
+@media (prefers-color-scheme: dark) {
+.hexdump-tooltip {
+  background: #242424;
+  border-color: #5A5A5A;
+}
 }
 .hexdump-tooltip.rcdata {
   background: #C6CEEC;
@@ -1900,6 +2503,10 @@ test.rc:1:10: note: the Win32 RC compiler may accept '+' as a unary operator her
   height:15px;
   overflow:hidden;
 }
+.hexdump-tooltip.below i {
+  top:auto;
+  bottom:100%;
+}
 .hexdump-tooltip i::after {
   content:'';
   position:absolute;
@@ -1907,8 +2514,17 @@ test.rc:1:10: note: the Win32 RC compiler may accept '+' as a unary operator her
   height:15px;
   left:50%;
   transform:translate(-50%,-50%) rotate(45deg);
-  background: black;
+  background: #E6E6E6;
   border: 1px solid #aaa;
+}
+.hexdump-tooltip.below i::after {
+  transform:translate(-50%,50%) rotate(-45deg);
+}
+@media (prefers-color-scheme: dark) {
+.hexdump-tooltip i::after {
+  background: #242424;
+  border-color: #5A5A5A;
+}
 }
 .hexdump-tooltip.rcdata i::after {
   background: #C6CEEC;
@@ -2025,6 +2641,8 @@ test.rc:1:10: note: the Win32 RC compiler may accept '+' as a unary operator her
   grid-template-columns: repeat(auto-fill, minmax(max(var(--grid-item--min-width), var(--grid-item--max-width)), 1fr));
   grid-gap: var(--grid-layout-gap);
 }
+
+pre code .inblock { position:relative; display:inline-block; }
 </style>
 
 </div>
