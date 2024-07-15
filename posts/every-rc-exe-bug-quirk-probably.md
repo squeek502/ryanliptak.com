@@ -28,7 +28,7 @@ Note: While this list is thorough, it is only indicative of my current understan
 - If you are someone that managed to [endure the bad audio of this talk I gave about my resource compiler](https://www.youtube.com/watch?v=RZczLb_uI9E) and wanted more, consider this an extension of that talk
 - If you are none of the above, consider this an entertaining list of bizarre bugs/edge cases
 
-If you have no familiarity with `.rc` files at all, no need to worry&mdash;I have tried to organize this post in order to get you up to speed as-you-read. However, if you'd instead like to skip around and check out the strangest bugs/quirks, `Ctrl+F` for 'utterly baffling'.
+If you have no familiarity with `.rc` files at all, no need to worry&mdash;I have tried to organize this post such that it will get you up to speed as-you-read. However, if you'd instead like to skip around and check out the strangest bugs/quirks, `Ctrl+F` for 'utterly baffling'.
 
 ## A brief intro to resource compilers
 
@@ -323,7 +323,7 @@ The entire `(1 | 2)+(2-1 & 0xFF)` expression, spaces and all, is interpreted as 
 
 Yes, that's right, `0xFF`!
 
-For whatever reason, `rc.exe` will just take the last number literal in the expression and try to read from a file with that name, e.g. `(1+1)` will try to read from the path `1`, and `1+-1` will try to read from the path `-1` (the `-` sign is [part of the number literal token in this case](#unary-operators-are-an-illusion)).
+For whatever reason, `rc.exe` will just take the last number literal in the expression and try to read from a file with that name, e.g. `(1+1)` will try to read from the path `1`, and `1+-1` will try to read from the path `-1` (the `-` sign is part of the number literal token, see ["*Unary operators are an illusion*"](#unary-operators-are-an-illusion)).
 
 #### `resinator`'s behavior
 
@@ -1929,14 +1929,18 @@ There is something bizarre about the "style" parameter of a generic control stat
 
 The `"why is this allowed"` string is completely ignored, and this `CONTROL` will be compiled exactly the same as the previous `CONTROL` statement shown above.
 
+<p><aside class="note">
+
 - This bug/quirk requires there to be no comma before the extra token. In the above example, if there is a comma between the `BS_CHECKBOX | WS_TABSTOP` and the `"why is this allowed"`, then it will (properly) error with `expected numerical dialog constant`
 - This bug/quirk is specific to the `style` parameter of `CONTROL` statements. In non-generic controls, the style parameter is optional and comes after the `h` parameter, but it does not exhibit this behavior
+
+</aside></p>
 
 The extra token can be many things (string, number, `=`, etc), but not *anything*. For example, if the extra token is `;`, then it will error with `expected numerical dialog constant`.
 
 #### `CONTROL`: "Okay, I see that expression, but I don't understand it"
 
-Instead of a single extra token in the `style` parameter of a `CONTROL`, it's also possible to stick an extra number expression in there like so:
+Instead of a single extra token in the `style` parameter of a `CONTROL`, it's also possible to sneak an extra number expression in there like so:
 
 <pre style="margin-top: 3em; overflow: visible; white-space: pre-wrap;"><code class="language-c" style="white-space: inherit;"><span style="opacity:50%;">CONTROL, "text", 1, BUTTON,</span> <span style="outline:2px dotted blue; position:relative; display:inline-block;"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span> <span class="token_punctuation">(</span>7<span class="token_operator">+</span>8<span class="token_punctuation">)</span><span class="hexdump-tooltip rcdata">style<i></i></span></span><span style="opacity: 50%;">, 2, 3, 4, 5</span></code></pre>
 
@@ -1944,7 +1948,7 @@ In this case, the Windows RC compiler no longer ignores the expression, but stil
 
 <pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span style="opacity:50%;">CONTROL, "text", 1, BUTTON,</span> <span class="annotation"><span class="desc">style<i></i></span><span class="subject"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span></span></span> <span style="opacity:50%;">(7+</span><span class="annotation"><span class="desc">x<i></i></span><span class="subject">8</span></span><span style="opacity:50%;">)</span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">y<i></i></span><span class="subject">2</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">w<i></i></span><span class="subject">3</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">h<i></i></span><span class="subject">4</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">exstyle<i></i></span><span class="subject">5</span></span></code></pre>
 
-My guess is that the similarity between this number-expression-related-behavior and ["*Number expressions as filenames*"](#number-expressions-as-filenames) is not a coincidence.
+My guess is that the similarity between this number-expression-related-behavior and ["*Number expressions as filenames*"](#number-expressions-as-filenames) is not a coincidence, but beyond that I couldn't tell you what's going on here.
 
 #### `resinator`'s behavior
 
@@ -2984,7 +2988,7 @@ test.rc:7:3: warning: this statement was ignored; when multiple statements of th
 
 ### Once a number, always a number
 
-The behavior described in ["*Yes, that `MENU` over there (vague gesturing)*"](#yes-that-menu-over-there-vague-gesturing) can also be induced in both `CLASS` and `MENU` statements of `DIALOG`/`DIALOGEX` resources via duplicate statements. As seen in ["*If you're not last, you're irrelevant*"](#if-you-re-not-last-you-re-irrelevant), multiple statements of the same type are allowed to be specified without much issue, but in the case of `CLASS` and `MENU`, if any of the duplicate statements are interpreted as a number, then the value of last statement of its type *is always interpreted as a number no matter what it contains*.
+The behavior described in ["*Yes, that `MENU` over there (vague gesturing)*"](#yes-that-menu-over-there-vague-gesturing) can also be induced in both `CLASS` and `MENU` statements of `DIALOG`/`DIALOGEX` resources via redundant statements. As seen in ["*If you're not last, you're irrelevant*"](#if-you-re-not-last-you-re-irrelevant), multiple statements of the same type are allowed to be specified without much issue, but in the case of `CLASS` and `MENU`, if any of the duplicate statements are interpreted as a number, then the value of last statement of its type (the only one that matters) *is always interpreted as a number no matter what it contains*.
 
 <pre><code class="language-c" style="display:block;"><span style="opacity: 50%;">1 DIALOGEX 0, 0, 640, 480</span>
   <span class="token_keyword">MENU</span> <span class="token_identifier">123</span> <span class="token_comment">// ignored, but causes the string below to be evaluated as a number</span>
