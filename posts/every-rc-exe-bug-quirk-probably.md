@@ -34,7 +34,7 @@ If you have no familiarity with `.rc` files at all, no need to worry&mdash;I hav
 
 `.rc` files (resource definition-script files) are scripts that contain both C/C++ preprocessor commands and resource definitions. We'll ignore the preprocessor for now and focus on resource definitions. One possible resource definition might look like this:
 
-<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">id<i></i></span><span class="subject"><span class="token_number">1</span></span></span> <span class="annotation"><span class="desc">type<i></i></span><span class="subject"><span class="token_identifier">FOO</span></span></span> <span class="token_punctuation">{</span> <span class="annotation"><span class="desc">data<i></i></span><span class="subject"><span class="token_string">"bar"</span></span></span> <span class="token_punctuation">}</span></code></pre>
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">id<i></i></span><span class="subject"><span class="token_identifier">1</span></span></span> <span class="annotation"><span class="desc">type<i></i></span><span class="subject"><span class="token_identifier">FOO</span></span></span> <span class="token_punctuation">{</span> <span class="annotation"><span class="desc">data<i></i></span><span class="subject"><span class="token_string">"bar"</span></span></span> <span class="token_punctuation">}</span></code></pre>
 
 The `1` is the ID of the resource, which can be a number (ordinal) or literal (name). The `FOO` is the type of the resource, and in this case it's a user-defined type with the name `FOO`. The `{ "bar" }` is a block that contains the data of the resource, which in this case is the string literal `"bar"`. Not all resource definitions look exactly like this, but the `<id> <type>` part is fairly common.
 
@@ -89,7 +89,7 @@ With that out of the way, we're ready to get into it.
 
 Here's a resource definition with a user-defined type (i.e. not one of the [predefined resource types](https://learn.microsoft.com/en-us/windows/win32/menurc/resource-definition-statements#resources)) of `FOO`:
 
-```c
+```rc
 1 FOO { "bar" }
 ```
 
@@ -97,7 +97,7 @@ For user-defined types, the (uppercased) resource type name is written as UTF-16
 
 So, following from this, let's try wrapping the resource type name in double quotes:
 
-```c
+```rc
 1 "FOO" { "bar" }
 ```
 
@@ -105,7 +105,7 @@ Intuitively, you might expect that this doesn't change anything (i.e. it'll stil
 
 This is because both resource IDs and resource types use special tokenization rules&mdash;they are basically only terminated by whitespace and nothing else (well, not exactly whitespace, it's actually any ASCII character from `0x05` to `0x20` [inclusive]). As an example:
 
-<pre><code class="language-c"><span class="token_tag">L"\r\n"123abc</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_class-name">error{OutOfMemory}!?u8</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_punctuation">{</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_string">"bar"</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_punctuation">}</span><span class="token_ansi_c_whitespace token_whitespace">
+<pre><code class="language-c"><span class="token_identifer">L"\r\n"123abc</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_identifier">error{OutOfMemory}!?u8</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_punctuation">{</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_string">"bar"</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_punctuation">}</span><span class="token_ansi_c_whitespace token_whitespace">
 </span></code></pre>
 
 <p><aside class="note">Reminder: Resource IDs don't have to be integers</aside></p>
@@ -152,14 +152,14 @@ For example, for the integer literal `123`:
 <div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(3, 1fr);">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```language-c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+```rc style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
 123
 ```
 
 </div>
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```language-c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
 '1' - '0' = 1
 '2' - '0' = 2
 '3' - '0' = 3
@@ -168,7 +168,7 @@ For example, for the integer literal `123`:
 </div>
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```language-c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
  1 * 100 = 100
   2 * 10 =  20
    3 * 1 =   3
@@ -189,21 +189,21 @@ The problem is that the exact same procedure outlined above is erroneously follo
 <div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(3, 1fr);">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```language-c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+```rc style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
 1²3
 ```
 
 </div>
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```language-c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
 '²' - '0' = 130
 ```
 
 </div>
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```language-c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
  1 * 100 =  100
 130 * 10 = 1300
    3 * 1 =    3
@@ -213,7 +213,7 @@ The problem is that the exact same procedure outlined above is erroneously follo
 
 </div>
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">integer literal</i></div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">numeric value of the ² digit</i></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">numeric value of the ² "digit"</i></div>
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">numeric value of the integer literal</i></div>
 </div>
 
@@ -221,7 +221,7 @@ This particular bug/quirk is (presumably) due to the use of the [`iswdigit`](htt
 
 #### `resinator`'s behavior
 
-```language-resinatorerror
+```resinatorerror
 test.rc:2:3: error: non-ASCII digit characters are not allowed in number literals
  1²3
  ^~~
@@ -236,13 +236,13 @@ test.rc:2:3: error: non-ASCII digit characters are not allowed in number literal
 
 Many resource types can get their data from a file, in which case their resource definition will look something like:
 
-```c
+```rc
 1 ICON "file.ico"
 ```
 
 Additionally, some resource types (like `ICON`) *must* get their data from a file. When attempting to define an `ICON` resource with a raw data block like so:
 
-```c
+```rc
 1 ICON BEGIN "foo" END
 ```
 
@@ -264,7 +264,7 @@ That is, the Windows RC compiler will try to interpret `BEGIN` as a filename, wh
 
 This is even worse when using `{` and `}` to open/close the block, as it triggers a separate bug:
 
-```c
+```rc
 1 ICON { "foo" }
 ```
 
@@ -280,7 +280,7 @@ Somehow, the filename `{` causes `rc.exe` to think the filename token is actuall
 
 In `resinator`, trying to use a raw data block with resource types that don't support raw data is an error, noting that if `{` or `BEGIN` is intended as a filename, it should use a quoted string literal.
 
-```language-resinatorerror
+```resinatorerror
 test.rc:1:8: error: expected '<filename>', found 'BEGIN' (resource type 'icon' can't use raw data)
 1 ICON BEGIN
        ^~~~~
@@ -302,7 +302,7 @@ Note: `windres` takes a different approach and removes this restriction around r
 
 There are multiple valid ways to specify the filename of a resource:
 
-```c
+```rc
 // Quoted string, reads from the file: bar.txt
 1 FOO "bar.txt"
 
@@ -315,7 +315,7 @@ There are multiple valid ways to specify the filename of a resource:
 
 But that's not all, as you can also specify the filename as an arbitrarily complex number expression, like so:
 
-```c
+```rc
 1 FOO (1 | 2)+(2-1 & 0xFF)
 ```
 
@@ -329,7 +329,7 @@ For whatever reason, `rc.exe` will just take the last number literal in the expr
 
 In `resinator`, trying to use a number expression as a filename is an error, noting that a quoted string literal should be used instead. Singular number literals are allowed, though (e.g. `-1`).
 
-```language-resinatorerror
+```resinatorerror
 test.rc:1:7: error: filename cannot be specified using a number expression, consider using a quoted string instead
 1 FOO (1 | 2)+(2-1 & 0xFF)
       ^~~~~~~~~~~~~~~~~~~~
@@ -345,7 +345,7 @@ test.rc:1:7: note: the Win32 RC compiler would evaluate this number expression a
 
 The incomplete resource definition in the following example is an error:
 
-```c
+```rc
 // A complete resource definition
 1 FOO { "bar" }
 
@@ -365,7 +365,7 @@ Strangely, `rc.exe` in this case will treat `FOO` as both the type of the resour
 
 `resinator` does not match the `rc.exe` behavior and instead errors on this type of incomplete resource definition at the end of a file:
 
-```language-resinatorerror
+```resinatorerror
 test.rc:5:6: error: expected quoted string literal or unquoted literal; got '<eof>'
 2 FOO
      ^
@@ -382,7 +382,7 @@ However...
 
 If we change the previous example to only have one dangling literal for its incomplete resource definition like so:
 
-```c
+```rc
 // A complete resource definition
 1 FOO { "bar" }
 
@@ -398,7 +398,7 @@ It also turns out that there are three `.rc` files in [Windows-classic-samples](
 
 `resinator` allows a single dangling literal at the end of a file, but emits a warning:
 
-```language-resinatorerror
+```resinatorerror
 test.rc:5:1: warning: dangling literal at end-of-file; this is not a problem, but it is likely a mistake
 FOO
 ^~~
@@ -418,7 +418,7 @@ FOO
 
 In addition to [a subset of the normal C/C++ preprocessor directives](https://learn.microsoft.com/en-us/windows/win32/menurc/preprocessor-directives), there is one resource-compiler-specific [`#pragma code_page` directive](https://learn.microsoft.com/en-us/windows/win32/menurc/pragma-directives) that allows changing which code page is active mid-file. This means that `.rc` files can *have a mixture of encodings* within a single file:
 
-```c
+```rc
 #pragma code_page(1252) // 1252 = Windows-1252
 1 RCDATA { "This is interpreted as Windows-1252: €" }
 
@@ -432,7 +432,7 @@ If the above example file is saved as [Windows-1252](https://en.wikipedia.org/wi
 
 So, if we run the Windows-1252-encoded file through only the `rc.exe` preprocessor (using the undocumented `rc.exe /p` option), the result is a file with the following contents:
 
-```c
+```rc
 #pragma code_page 1252
 1 RCDATA { "This is interpreted as Windows-1252: €" }
 
@@ -452,7 +452,7 @@ If, instead, the example file is saved as [UTF-8](https://en.wikipedia.org/wiki/
 
 So, if we run the UTF-8-encoded version through the `rc.exe` preprocessor, the result looks like this:
 
-```c
+```rc
 #pragma code_page 1252
 1 RCDATA { "This is interpreted as Windows-1252: â‚¬" }
 
@@ -475,7 +475,7 @@ As mentioned in [*The Windows RC compiler 'speaks' UTF-16*](#the-windows-rc-comp
 
 What was not mentioned, however, is that the code page affects both how the input is interpreted *and* how the output is encoded. Take the following example:
 
-```c
+```rc
 1 RCDATA { "Ó" }
 ```
 
@@ -491,7 +491,7 @@ If the same Windows-1252-encoded file is compiled with the default code page set
 
 This is all pretty reasonable, but things start to get truly bizarre when you add `#pragma code_page` into the mix:
 
-```c
+```rc
 #pragma code_page(1252)
 1 RCDATA { "Ó" }
 ```
@@ -505,7 +505,7 @@ That is, the `#pragma code_page` changed the *input* code page, but there is a d
 
 Even more bizarre, this disjointedness can only occur via the first `#pragma code_page` directive of the file:
 
-```c
+```rc
 #pragma code_page(65001) // which code page this is doesn't matter, it can be anything valid
 #pragma code_page(1252)
 1 RCDATA { "Ó" }
@@ -546,22 +546,6 @@ The Windows RC compiler's error hints that this is the intended behavior (`contr
 ### FONT parameter inheritance
 
 The `weight` and `italic` parameters of a `FONT` statement get carried over to subsequent `FONT` statements attached to a `DIALOGEX` resource if the subsequent `FONT` statements don't provide those parameters, but `charset` doesn't (it will always have a default of `1` (`DEFAULT_CHARSET`) if not specified).
-
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">parser bug/quirk</span>
-
-### Escaping quotes
-
-The Windows RC compiler is super permissive in what input it will accept, but in this case it is overly so. For example, if you have `1 RCDATA { "\""BLAH" }` with `#define BLAH 2` elsewhere in the file:
-
-- A preprocessor would treat the `\"` as an escaped quote and parse the part after the `{` as: `"\""`, `BLAH`, `" }`; it would then replace `BLAH` with `2` since it thinks it's outside of a string literal (note: the preprocessor would also normally result in a `missing terminating '"' character` warning since the `" }` string is never closed; in the Windows RC compiler this warning is either not emitted or not shown to the user).
-- The RC compiler would then get the resulting `1 RCDATA { "\""2" }` and parse the part after the `{` as: `"\""2"`, `}`, since in `.rc` string literals, `""` is an escaped quote, not `\"`. In the Windows RC compiler, `\"` is a weird special case in which it both treats the `\` as an escape character (in that it doesn't appear in the parsed string), but doesn't actually escape the `"` (note that other invalid escapes like e.g. `\k` end up with both the `\` and `k` in the parsed string).
-
-The fact that `\"` makes it possible for macro expansion to silently happen within what the RC compiler thinks are string literals is enough of a footgun that it makes sense to make it an error instead. Note also that it can lead to really bizarre edge cases/compile errors when, for example, particular control characters follow a `\""` sequence in a string literal.
-
-> In `resinator`, the sequence `\"` within a string literal is an error, noting that `""` should be used to escape quotes within string literals.
 
 </div>
 
@@ -709,7 +693,7 @@ The data length of a `VERSIONNODE` for strings is counted in UTF-16 code units i
 
 The following script, when encoded as Windows-1252, will cause the `rc.exe` preprocessor to freak out and output what seems to be garbage. 
 
-```c
+```rc
 1 DLGINCLUDE "\001ýA\001\001\x1aý\xFF"
 ```
 
@@ -738,7 +722,7 @@ One possible explanation is that this is somehow triggering a heuristic which is
 
 The most minimal reproduction I've found is:
 
-```c
+```rc
 1 DLGINCLUDE "â"""
 ```
 
@@ -762,7 +746,7 @@ Some commonalities between all the reproductions of this bug I've found so far:
 
 ### Certain `DLGINCLUDE` filenames trigger `missing '=' in EXSTYLE=<flags>` errors
 
-```c
+```rc
 1 DLGINCLUDE "\06f\x2\x2b\445q\105[ð\134\x90 ...truncated..."
 ```
 
@@ -796,7 +780,7 @@ Version information is specified using key/value pairs within `VERSIONINFO` reso
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
   <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
     <code class="language-none"><span style="opacity: 50%;">1 VERSIONINFO {</span>
-  <span>VALUE</span> <span style="background: rgba(255,0,0,.1);">"key"</span>, <span style="background: rgba(0,255,0,.1);">"value"</span>
+  <span class="token_keyword">VALUE</span> <span style="background: rgba(255,0,0,.1);">"key"</span>, <span style="background: rgba(0,255,0,.1);">"value"</span>
 <span style="opacity: 50%;">}</span></code>
   </pre>
 </div>
@@ -815,7 +799,7 @@ However, if the comma between the key and value is omitted, then for whatever re
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
   <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
     <code class="language-none"><span style="opacity: 50%;">1 VERSIONINFO {</span>
-  <span>VALUE</span> <span style="background: rgba(255,0,0,.1);">"key"</span> <span style="background: rgba(0,255,0,.1);">"value"</span>
+  <span class="token_keyword">VALUE</span> <span style="background: rgba(255,0,0,.1);">"key"</span> <span style="background: rgba(0,255,0,.1);">"value"</span>
 <span style="opacity: 50%;">}</span></code>
   </pre>
 </div>
@@ -843,7 +827,7 @@ alue
 
 The problems don't end there, though&mdash;`VERSIONINFO` is compiled into a tree structure, meaning the misreading of one node affects the reading of future nodes. Here's a (simplified) real-world `VERSIONINFO` resource definition from a `.rc` file in [Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples):
 
-```c
+```rc
 VS_VERSION_INFO VERSIONINFO
 BEGIN
     BLOCK "StringFileInfo"
@@ -903,7 +887,7 @@ Let's say you wanted to define a dialog resource with a button, but you wanted t
 
 <pre><code class="language-c"><span style="opacity: 50%;">1 DIALOGEX 0, 0, 282, 239
 {</span>
-  PUSHBUTTON <span style="opacity: 50%;">"Cancel",1,129,212,50,14,</span> <span class="token_keyword">NOT</span> WS_VISIBLE
+  PUSHBUTTON <span style="opacity: 50%;">"Cancel",1,129,212,50,14,</span> <span class="token_operator">NOT</span> WS_VISIBLE
 <span style="opacity: 50%;">}</span></code>
 </pre>
 
@@ -911,13 +895,13 @@ Since `WS_VISIBLE` is set by default, this will unset it and make the button inv
 
 <pre><code class="language-c"><span style="opacity: 50%;">1 DIALOGEX 0, 0, 282, 239
 {</span>
-  PUSHBUTTON <span style="opacity: 50%;">"Cancel",1,129,212,50,14,</span> <span class="token_keyword">NOT</span> WS_VISIBLE <span class="token_operator">|</span> BS_VCENTER
+  PUSHBUTTON <span style="opacity: 50%;">"Cancel",1,129,212,50,14,</span> <span class="token_operator">NOT</span> WS_VISIBLE <span class="token_operator">|</span> BS_VCENTER
 <span style="opacity: 50%;">}</span></code>
 </pre>
 
 `WS_VISIBLE` and `BS_VCENTER` are `#define`s that stem from `WinUser.h` and are just numbers under-the-hood. For simplicity's sake, let's pretend their values are `0x1` for `WS_VISIBLE` and `0x2` for `BS_VCENTER` and then focus on this simplified `NOT` expression:
 
-<pre><code class="language-c"><span class="token_keyword">NOT</span> <span class="token_number">0x1</span> <span class="token_operator">|</span> <span class="token_number">0x2</span></code>
+<pre><code class="language-c"><span class="token_operator">NOT</span> 0x1 <span class="token_operator">|</span> 0x2</code>
 </pre>
 
 Since `WS_VISIBLE` is on by default, the default value of these flags is `0x1`, and so the resulting value is evaluated like this:
@@ -932,11 +916,11 @@ Since `WS_VISIBLE` is on by default, the default value of these flags is `0x1`, 
 <div class="not-eval-code"><pre><code>0000 0001</code></pre></div>
 <div class="not-eval-border"><span><code>0x1</code></span></div>
 
-<div class="not-eval-border"><code><span class="token_keyword">NOT</span> <span class="token_number">0x1</span></code></div>
+<div class="not-eval-border"><code><span class="token_operator">NOT</span> 0x1</code></div>
 <div class="not-eval-code"><pre><code>0000 000<span class="token_deleted">0</span></code></pre></div>
 <div class="not-eval-border"><span><code>0x0</code></span></div>
 
-<div class="not-eval-border"><code><span class="token_operator">|</span> <span class="token_number">0x2</span></code></div>
+<div class="not-eval-border"><code><span class="token_operator">|</span> 0x2</code></div>
 <div class="not-eval-code"><pre><code>0000 00<span class="token_addition">1</span>0</code></pre></div>
 <div class="not-eval-border"><span><code>0x2</code></span></div>
 
@@ -944,8 +928,9 @@ Since `WS_VISIBLE` is on by default, the default value of these flags is `0x1`, 
 
 Ordering matters as well. If we switch the expression to:
 
-<pre><code class="language-c"><span class="token_keyword">NOT</span> <span class="token_number">0x1</span> <span class="token_operator">|</span> <span class="token_number">0x1</span></code>
-</pre>
+```rc
+NOT 0x1 | 0x1
+```
 
 then we end up with `0x1` as the result:
 
@@ -959,11 +944,11 @@ then we end up with `0x1` as the result:
 <div class="not-eval-code"><pre><code>0000 0001</code></pre></div>
 <div class="not-eval-border"><span><code>0x1</code></span></div>
 
-<div class="not-eval-border"><code><span class="token_keyword">NOT</span> <span class="token_number">0x1</span></code></div>
+<div class="not-eval-border"><code><span class="token_operator">NOT</span> 0x1</code></div>
 <div class="not-eval-code"><pre><code>0000 000<span class="token_deleted">0</span></code></pre></div>
 <div class="not-eval-border"><span><code>0x0</code></span></div>
 
-<div class="not-eval-border"><code><span class="token_operator">|</span> <span class="token_number">0x1</span></code></div>
+<div class="not-eval-border"><code><span class="token_operator">|</span> 0x1</code></div>
 <div class="not-eval-code"><pre><code>0000 000<span class="token_addition">1</span></code></pre></div>
 <div class="not-eval-border"><span><code>0x1</code></span></div>
 
@@ -971,8 +956,9 @@ then we end up with `0x1` as the result:
 
 If, instead, the ordering was reversed like so:
 
-<pre><code class="language-c"><span class="token_number">0x1</span> <span class="token_operator">|</span> <span class="token_keyword">NOT</span> <span class="token_number">0x1</span></code>
-</pre>
+```rc
+0x1 | NOT 0x1
+```
 
 then the value at the end would be `0x0`:
 
@@ -986,11 +972,11 @@ then the value at the end would be `0x0`:
 <div class="not-eval-code"><pre><code>0000 0001</code></pre></div>
 <div class="not-eval-border"><span><code>0x1</code></span></div>
 
-<div class="not-eval-border"><code><span class="token_number">0x1</span></code></div>
+<div class="not-eval-border"><code>0x1</code></div>
 <div class="not-eval-code"><pre><code>0000 0001</code></pre></div>
 <div class="not-eval-border"><span><code>0x1</code></span></div>
 
-<div class="not-eval-border"><code><span class="token_operator">|</span> <span class="token_keyword">NOT</span> <span class="token_number">0x1</span></code></div>
+<div class="not-eval-border"><code><span class="token_operator">|</span> <span class="token_operator">NOT</span> 0x1</code></div>
 <div class="not-eval-code"><pre><code>0000 000<span class="token_deleted">0</span></code></pre></div>
 <div class="not-eval-border"><span><code>0x0</code></span></div>
 
@@ -1042,7 +1028,7 @@ The strangeness of `NOT` doesn't end there, as the Windows RC compiler also allo
 
 As an example, here are `NOT` expressions used in the `x`, `y`, `width`, and `height` arguments of a `DIALOGEX` resource:
 
-```c
+```rc
 1 DIALOGEX NOT 1, NOT 2, NOT 3, NOT 4
 {
   // ...
@@ -1053,7 +1039,7 @@ This doesn't necessarily cause problems, but since `NOT` is only useful in the c
 
 However, there *is* an extra bit of weirdness involved here, since certain `NOT` expressions cause errors in some places but not others. For example, the expression `1 | NOT 2` is an error if it's used in the `type` parameter of a `MENUEX`'s `MENUITEM`, but `NOT 2 | 1` is totally accepted.
 
-```c
+```rc
 1 MENUEX {
   // Error: numeric value expected at NOT
   MENUITEM "bar", 101, 1 | NOT 2
@@ -1089,7 +1075,7 @@ The `ICON` and `CURSOR` resource types expect a `.ico` file and a `.cur` file, r
 
 The Windows RC compiler does not discriminate on what type is used for which resource. If we have `foo.ico` with the 'icon' type, and `foo.cur` with the 'cursor' type, then the Windows RC compiler will happily accept all of the following resources:
 
-```c
+```rc
 1 ICON "foo.ico"
 2 ICON "foo.cur"
 3 CURSOR "foo.ico"
@@ -1125,7 +1111,7 @@ test.rc:1:10: error: resource type 'cursor' does not match type 'icon' specified
 
 The Windows RC compiler is fine with `.ico` files that have PNG encoded images, but for whatever reason rejects `.cur` files with PNG encoded images.
 
-```c
+```rc
 // No error, compiles and loads just fine
 1 ICON "png.ico"
 // error RC2176 : old DIB in 1x1_png.cur; pass it through SDKPAINT
@@ -1363,7 +1349,7 @@ Together, it means that there is some justification for forcing the color table 
 
 Interestingly, the behavior with regards to smaller-than-expected color tables means that an invalid bitmap compiled as a resource can end up becoming a valid bitmap. For example, if you have a bitmap with 12 actual entries in the color table, but `BITMAPFILEHEADER.biClrUsed` says there are 13, Windows considers that an invalid bitmap and won't render it. If you take that bitmap and compile it as a resource, though:
 
-```c
+```rc
 1 BITMAP "invalid.bmp"
 ```
 
@@ -1496,7 +1482,7 @@ My guess/hope is that this a bug in `LoadBitmap`, as I believe the `resinator`-c
 
 The resource-compiler-specific preprocessor directive `#pragma code_page` can be used to alter the [code page](https://en.wikipedia.org/wiki/Code_page) used mid-file. It's used like so:
 
-```c
+```rc
 #pragma code_page(1252) // Windows-1252
 // ... bytes from now on are interpreted as Windows-1252 ...
 
@@ -1515,7 +1501,7 @@ But what happens if you try to use an extremely large code page value (greater o
 <div class="short-rc-and-result">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
 #pragma code_page(4294967296)
 ```
 
@@ -1530,7 +1516,7 @@ fatal error RC1116: RC terminating after preprocessor errors
 </div>
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
 #pragma code_page(4295032296)
 ```
 
@@ -1544,7 +1530,7 @@ fatal error RC22105: MultiByteToWideChar failed.
 </div>
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
 #pragma code_page(4295032297)
 ```
 
@@ -1598,7 +1584,7 @@ Similar to what was detailed in ["*`BEGIN` or `{` as filename*"](#begin-or-as-fi
 <div class="short-rc-and-result">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
 1 RCDATA )
 ```
 
@@ -1614,7 +1600,7 @@ test.rc(2) : error RC2135 : file not found: RCDATA
 
 But that's not all; take this, for example, where we define a `RCDATA` resource using a raw data block:
 
-```c
+```rc
 1 RCDATA { 1, ), ), ), 2 }
 ```
 
@@ -1628,7 +1614,7 @@ I said 'skip' because that's truly what seems to happen. For example, for resour
 
 <pre><code class="language-none"><span style="opacity: 50%;">1 DIALOGEX 1, 2, 3, 4 {</span>
   <span class="token_comment">//        &lt;text&gt; &lt;id&gt; &lt;x&gt; &lt;y&gt; &lt;w&gt; &lt;h&gt; &lt;style&gt;</span>
-  <span>CHECKBOX</span>  <span class="token_string">"test"</span>,  <span class="token_number">1</span>,  <span class="token_number">2</span>,  <span class="token_number">3</span>,  <span class="token_number">4</span>,  <span class="token_number">5</span>,  <span class="token_number">6</span>
+  <span class="token_keyword">CHECKBOX</span>  <span class="token_string">"test"</span>,  1,  2,  3,  4,  5,  6
 <span style="opacity: 50%;">}</span></code>
 </pre>
 
@@ -1636,7 +1622,7 @@ If you replace the `<id>` parameter (`1`) with `)`, then all the parameters shif
 
 <pre><code class="language-none"><span style="opacity: 50%;">1 DIALOGEX 1, 2, 3, 4 {</span>
   <span class="token_comment">//        &lt;text&gt;     &lt;id&gt; &lt;x&gt; &lt;y&gt; &lt;w&gt; &lt;h&gt;</span>
-  <span>CHECKBOX</span>  <span class="token_string">"test"</span>,  <span class="token_punctuation">)</span>,  <span class="token_number">2</span>,  <span class="token_number">3</span>,  <span class="token_number">4</span>,  <span class="token_number">5</span>,  <span class="token_number">6</span>
+  <span class="token_keyword">CHECKBOX</span>  <span class="token_string">"test"</span>,  <span class="token_punctuation">)</span>,  2,  3,  4,  5,  6
 <span style="opacity: 50%;">}</span></code>
 </pre>
 
@@ -1645,7 +1631,7 @@ Note also that all of this is only true of the *close parenthesis*. The open par
 <div class="short-rc-and-result">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
 1 RCDATA { 1, (, 2 }
 ```
 
@@ -1684,7 +1670,7 @@ While the [close parenthesis](#the-strange-power-of-the-lonely-close-parenthesis
 
 This is (somehow) allowed:
 
-```c
+```rc
 1 DIALOGEX 1(, (2, (3(, ((((4(((( {}
 ```
 
@@ -1695,7 +1681,7 @@ This power of `(` does not have infinite reach, though&mdash;in other places a `
 <div class="short-rc-and-result">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
 1 RCDATA { 1, (2, 3, 4 }
 ```
 
@@ -1730,7 +1716,7 @@ test.rc:1:14: error: expected number or number expression; got ','
 
 If a filename evaluates to a string that contains a `NUL` (`0x00`) character, the Windows RC compiler treats it as a terminator. For example,
 
-```c
+```rc
 1 RCDATA "hello\x00world"
 ```
 
@@ -1762,7 +1748,7 @@ The unary `-` is included as part of a number literal, not as a distinct operato
 <div class="short-rc-and-result">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
 1 FOO (567 + 123)
 ```
 
@@ -1781,7 +1767,7 @@ And if we throw in a unary `-` like so, then it gets included as part of the fil
 <div class="short-rc-and-result">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
 1 FOO (567 + -123)
 ```
 
@@ -1797,13 +1783,13 @@ test.rc(1) : error RC2135 : file not found: -123
 
 This quirk leads to a few unexpected valid patterns, since `-` on its own is also considered a valid number literal (and it resolves to `0`), so:
 
-```c
+```rc
 1 FOO { 1-- }
 ```
 
 evaluates to `1-0` and results in `1` being written to the resource's data, while:
 
-```c
+```rc
 1 FOO { "str" - 1 }
 ```
 
@@ -1814,7 +1800,7 @@ Additionally, it means that otherwise valid looking expressions may not actually
 <div class="short-rc-and-result">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
 1 FOO { (-(123)) }
 ```
 
@@ -1835,17 +1821,13 @@ The unary NOT (`~`) works exactly the same as the unary `-` and has all the same
 <div class="short-rc-and-result">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
 1 FOO { ~ }
 ```
 
 </div>
 <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
-Data is a u16 with the value 0xFFFF
-```
-
+<div class="box-border" style="display: flex; flex-direction: column; flex-grow: 1; padding: 1em; margin: 0.5em 0; margin-top: 0;"><div>Data is a <code>u16</code> with the value <code>0xFFFF</code></div></div>
 </div>
 </div>
 
@@ -1854,17 +1836,13 @@ And `~L` (to turn the integer into a `u32`) is valid in the same way that `-L` w
 <div class="short-rc-and-result">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
 1 FOO { ~L }
 ```
 
 </div>
 <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
-Data is a u32 with the value 0xFFFFFFFF
-```
-
+<div class="box-border" style="display: flex; flex-direction: column; flex-grow: 1; padding: 1em; margin: 0.5em 0; margin-top: 0;"><div>Data is a <code>u32</code> with the value <code>0xFFFFFFFF</code></div></div>
 </div>
 </div>
 
@@ -1875,7 +1853,7 @@ The unary `+` is almost entirely a hallucination; it can be used in some places,
 
 This is valid (and the parameters evaluate to `1`, `2`, `3`, `4` as expected):
 
-```c
+```rc
 1 DIALOG +1, +2, +3, +4 {}
 ```
 
@@ -1884,7 +1862,7 @@ but this is an error:
 <div class="short-rc-and-result">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
 1 FOO { +123 }
 ```
 
@@ -1903,7 +1881,7 @@ and so is this:
 <div class="short-rc-and-result">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
 1 DIALOG (+1), 2, 3, 4 {}
 ```
 
@@ -1941,9 +1919,9 @@ Within `DIALOG`/`DIALOGEX` resources, there are predefined controls like `PUSHBU
 
 For example, these two statements are equivalent:
 
-<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">class<i></i></span><span class="subject"><span class="token_identifier">CHECKBOX</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">text<i></i></span><span class="subject"><span class="token_string">"foo"</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">id<i></i></span><span class="subject"><span class="token_number">1</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">x<i></i></span><span class="subject"><span class="token_number">2</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">y<i></i></span><span class="subject"><span class="token_number">3</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">w<i></i></span><span class="subject"><span class="token_number">4</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">h<i></i></span><span class="subject"><span class="token_number">5</span></span></span></code></pre>
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">class<i></i></span><span class="subject"><span class="token_keyword">CHECKBOX</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">text<i></i></span><span class="subject"><span class="token_string">"foo"</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">id<i></i></span><span class="subject">1</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">x<i></i></span><span class="subject">2</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">y<i></i></span><span class="subject">3</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">w<i></i></span><span class="subject">4</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">h<i></i></span><span class="subject">5</span></span></code></pre>
 
-<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">class<i></i></span><span class="subject"><span class="token_identifier">CONTROL</span></span></span><span class="token_punctuation">,</span> <span class="token_string">"foo"</span><span class="token_punctuation">,</span> <span class="token_number">1</span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">class name<i></i></span><span class="subject"><span class="token_identifier">BUTTON</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">style<i></i></span><span class="subject"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span></span></span><span class="token_punctuation">,</span> <span class="token_number">2</span><span class="token_punctuation">,</span> <span class="token_number">3</span><span class="token_punctuation">,</span> <span class="token_number">4</span><span class="token_punctuation">,</span> <span class="token_number">5</span></code></pre>
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">class<i></i></span><span class="subject"><span class="token_keyword">CONTROL</span></span></span><span class="token_punctuation">,</span> <span class="token_string">"foo"</span><span class="token_punctuation">,</span> 1<span class="token_punctuation">,</span> <span class="annotation"><span class="desc">class name<i></i></span><span class="subject"><span class="token_keyword">BUTTON</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">style<i></i></span><span class="subject"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span></span></span><span class="token_punctuation">,</span> 2<span class="token_punctuation">,</span> 3<span class="token_punctuation">,</span> 4<span class="token_punctuation">,</span> 5</code></pre>
 
 There is something bizarre about the "style" parameter of a generic control statement, though. For whatever reason, it allows an extra token within it and will act as if it doesn't exist.
 
@@ -1960,11 +1938,11 @@ The extra token can be many things (string, number, `=`, etc), but not *anything
 
 Instead of a single extra token in the `style` parameter of a `CONTROL`, it's also possible to stick an extra number expression in there like so:
 
-<pre style="margin-top: 3em; overflow: visible; white-space: pre-wrap;"><code class="language-c" style="white-space: inherit;"><span style="opacity:50%;">CONTROL, "text", 1, BUTTON,</span> <span style="outline:2px dotted blue; position:relative; display:inline-block;"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span> <span class="token_punctuation">(</span><span class="token_number">7</span><span class="token_operator">+</span><span class="token_number">8</span><span class="token_punctuation">)</span><span class="hexdump-tooltip rcdata">style<i></i></span></span><span style="opacity: 50%;">, 2, 3, 4, 5</span></code></pre>
+<pre style="margin-top: 3em; overflow: visible; white-space: pre-wrap;"><code class="language-c" style="white-space: inherit;"><span style="opacity:50%;">CONTROL, "text", 1, BUTTON,</span> <span style="outline:2px dotted blue; position:relative; display:inline-block;"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span> <span class="token_punctuation">(</span>7<span class="token_operator">+</span>8<span class="token_punctuation">)</span><span class="hexdump-tooltip rcdata">style<i></i></span></span><span style="opacity: 50%;">, 2, 3, 4, 5</span></code></pre>
 
 In this case, the Windows RC compiler no longer ignores the expression, but still behaves strangely. Instead of the entire `(7+8)` expression being treated as the `x` parameter like you might expect, in this case *only the* `8` in the expression is treated as the `x` parameter, so it ends up interpreted like this:
 
-<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span style="opacity:50%;">CONTROL, "text", 1, BUTTON,</span> <span class="annotation"><span class="desc">style<i></i></span><span class="subject"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span></span></span> <span style="opacity:50%;">(7+</span><span class="annotation"><span class="desc">x<i></i></span><span class="subject"><span class="token_number">8</span></span></span><span style="opacity:50%;">)</span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">y<i></i></span><span class="subject"><span class="token_number">2</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">w<i></i></span><span class="subject"><span class="token_number">3</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">h<i></i></span><span class="subject"><span class="token_number">4</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">exstyle<i></i></span><span class="subject"><span class="token_number">5</span></span></span></code></pre>
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span style="opacity:50%;">CONTROL, "text", 1, BUTTON,</span> <span class="annotation"><span class="desc">style<i></i></span><span class="subject"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span></span></span> <span style="opacity:50%;">(7+</span><span class="annotation"><span class="desc">x<i></i></span><span class="subject">8</span></span><span style="opacity:50%;">)</span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">y<i></i></span><span class="subject">2</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">w<i></i></span><span class="subject">3</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">h<i></i></span><span class="subject">4</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">exstyle<i></i></span><span class="subject">5</span></span></code></pre>
 
 My guess is that the similarity between this number-expression-related-behavior and ["*Number expressions as filenames*"](#number-expressions-as-filenames) is not a coincidence.
 
@@ -2000,7 +1978,7 @@ Like in C, an integer literal can be suffixed with `L` to signify that it is a '
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
 <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
-  <code class="language-c"><span class="token_number">1</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_identifier">RCDATA</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_punctuation">{</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_number" style="outline: 1px dashed red; padding: 0 3px;">1</span><span class="token_punctuation">,</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_number" style="outline: 1px dashed orange; padding: 0 3px;">2L</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_punctuation">}</span><span class="token_ansi_c_whitespace token_whitespace">
+  <code class="language-c">1<span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_identifier">RCDATA</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_punctuation">{</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span style="outline: 1px dashed red; padding: 0 3px;">1</span><span class="token_punctuation">,</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span style="outline: 1px dashed orange; padding: 0 3px;">2L</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_punctuation">}</span><span class="token_ansi_c_whitespace token_whitespace">
 </span></code>
 </pre>
 
@@ -2017,7 +1995,7 @@ Like in C, an integer literal can be suffixed with `L` to signify that it is a '
 
 However, outside of raw data blocks like the `RCDATA` example above, the `L` suffix is typically meaningless, as it has no bearing on the size of the integer used. For example, `DIALOG` resources have `x`, `y`, `width`, and `height` parameters, and they are each encoded in the data as a `u16` regardless of the integer literal used. If the value would overflow a `u16`, then the value is truncated back down to a `u16`, meaning in the following example all 4 parameters after `DIALOG` get compiled down to `1` as a `u16`:
 
-```c
+```rc
 1 DIALOG 1, 1L, 65537, 65537L {}
 ```
 
@@ -2030,7 +2008,7 @@ A few particular parameters, though, fully disallow integer literals with the `L
 <div class="short-rc-and-result">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
 LANGUAGE 1L, 2
 ```
 
@@ -2047,7 +2025,7 @@ test.rc(1) : error RC2145 : PRIMARY LANGUAGE ID too large
 <div class="short-rc-and-result">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```c style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
 1 VERSIONINFO
   FILEVERSION 1L, 2, 3, 4
 BEGIN
@@ -2066,7 +2044,7 @@ test.rc(2) : error RC2127 : version WORDs separated by commas expected
 
 It is true that these parameters are limited to `u16`, so using an `L` suffix is likely a mistake, but that is also true of many other parameters for which the Windows RC compiler happily allows `L` suffixed numbers for. It's unclear why these particular parameters are singled out, and even more unclear given the fact that specifying these parameters using an integer literal that would overflow a `u16` does not actually trigger an error (and instead it truncates the values to a `u16`):
 
-```c
+```rc
 1 VERSIONINFO
   FILEVERSION 65537, 65538, 65539, 65540
 BEGIN
@@ -2143,9 +2121,9 @@ In [version 3 of the `.fnt` format](https://web.archive.org/web/20080115184921/h
 <span style="background: rgba(150,0,255,.1);">...............</span> ◄─┘
 <span style="background: rgba(150,0,255,.1);">...............</span></code></pre>
 
-Getting back to resource compilation. `FONT` resources within `.rc` files are collected and compiled into the following resources:
+Getting back to resource compilation, `FONT` resources within `.rc` files are collected and compiled into the following resources:
 
-- A `RT_FONT` resource for each font, where the data is the verbatim file contents of the `.fnt` file
+- A `RT_FONT` resource for each `FONT`, where the data is the verbatim file contents of the `.fnt` file
 - A `FONTDIR` resource that contains data about each font, in the format specified by [`FONTGROUPHDR`](https://learn.microsoft.com/en-us/windows/win32/menurc/fontgrouphdr)
   + side note: the string `FONTDIR` is the type of this resource, it doesn't have an associated integer ID like most other Windows-defined resources do
 
@@ -2279,7 +2257,7 @@ This means that, for some subset of valid `.ttf` files (or other non-`.fnt` font
 
 #### `resinator`'s behavior
 
-I'm still not quite sure what the best course of action is here. I've [written up the possibilities here](https://squeek502.github.io/resinator/windows/resources/font.html#so-really-what-should-go-in-the-fontdir), and for now I've gone with what I'm calling the "semi-compatibility while avoiding the sharp edges" approach:
+I'm still not quite sure what the best course of action is here. I've [written up what I see as the possibilities here](https://squeek502.github.io/resinator/windows/resources/font.html#so-really-what-should-go-in-the-fontdir), and for now I've gone with what I'm calling the "semi-compatibility while avoiding the sharp edges" approach:
 
 > Do something similar enough to the Win32 compiler in the common case, but avoid emulating the buggy behavior where it makes sense. That would look like a `FONTDIRENTRY` with the following format:
 >
@@ -2289,12 +2267,9 @@ I'm still not quite sure what the best course of action is here. I've [written u
 >
 > This also enables the use-case of non-`.FNT` files without any loose ends.
 
-In short: write the new/undocumented `FONTDIRENTRY`, but avoid the crashes, avoid the negative integer-related errors, and always write `szDeviceName` and `szFaceName` as 0-length.
+In short: write the new/undocumented `FONTDIRENTRY` format, but avoid the crashes, avoid the negative integer-related errors, and always write `szDeviceName` and `szFaceName` as 0-length.
 
 </div>
-
-<div>
-
 
 <div class="bug-quirk-box">
 <span class="bug-quirk-category">parser bug/quirk, utterly baffling</span>
@@ -2303,7 +2278,7 @@ In short: write the new/undocumented `FONTDIRENTRY`, but avoid the crashes, avoi
 
 This compiles:
 
-```c
+```rc
 1 DIALOGEX 1, 2, 3, 4 - 0 {}
 ```
 
@@ -2312,7 +2287,7 @@ This doesn't:
 <div class="short-rc-and-result">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```c style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+```rc style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
 1 DIALOGEX 1, 2, 3, 4-0 {}
 ```
 
@@ -2341,7 +2316,7 @@ Resource definitions that error:
 
 The only additional information I have is that the following:
 
-```c
+```rc
 1 DIALOGEX 1, 2, 3, 10-0x0+5 {} hello
 ```
 
@@ -2359,7 +2334,7 @@ Writing {}:+5,  lang:0x409,     size 0
 
 The verbose output gives us a hint that the Windows RC compiler is interpreting the `+5 {} hello` as a new resource definition like so:
 
-<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">id<i></i></span><span class="subject"><span class="token_number">+5</span></span></span> <span class="annotation"><span class="desc">type<i></i></span><span class="subject"><span class="token_identifier">{}</span></span></span> <span class="annotation"><span class="desc">filename<i></i></span><span class="subject"><span class="token_string">hello</span></span></span></code></pre>
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">id<i></i></span><span class="subject">+5</span></span> <span class="annotation"><span class="desc">type<i></i></span><span class="subject"><span class="token_identifier">{}</span></span></span> <span class="annotation"><span class="desc">filename<i></i></span><span class="subject"><span class="token_string">hello</span></span></span></code></pre>
 
 So, somehow, the subtraction of the zero caused the `BEGIN expected in dialog` error, and then the Windows RC compiler immediately restarted its parser state and began parsing a new resource definition from scratch. This doesn't give much insight into why subtracting zero causes an error in the first place, but I thought it was a slightly interesting additional wrinkle.
 
@@ -2368,6 +2343,685 @@ So, somehow, the subtraction of the zero caused the `BEGIN expected in dialog` e
 `resinator` does not treat subtracting zero as special, and therefore never errors on any expressions that subtract zero.
 
 Ideally, a warning would be emitted in cases where the Windows RC compiler would error, but detecting when that would be the case is not something I'm capable of doing currently.
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">preprocessor bug/quirk, parser bug/quirk</span>
+
+### Multiline strings don't behave as expected/documented
+
+Within the [`STRINGTABLE` resource documentation](https://learn.microsoft.com/en-us/windows/win32/menurc/stringtable-resource) we see this statement:
+
+> The string [...] must occupy a single line in the source file (unless a '&bsol;' is used as a line continuation).
+
+<p><aside class="note">
+
+Note: While this documentation is for `STRINGTABLE`, it actually applies to string literals in `.rc` files generally. In other words, there's nothing special about how `STRINGTABLE` handles string literals, and the bugs/quirks described below apply to all resource types.
+
+</aside></p>
+
+This is similar to the rules around C strings:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; justify-content: center; flex-grow: 1; margin-top: 0;"
+char *my_string = "Line 1
+Line 2";
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```resinatorerror style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+multilinestring.c:1:19: error: missing terminating '"' character
+char *my_string = "Line 1
+                  ^
+```
+
+</div>
+</div>
+
+<p style="margin-top: 0; text-align: center;"><i class="caption">Splitting a string across multiple lines without using <code>&bsol;</code> is an error in C</i></p>
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; justify-content: center; flex-grow: 1; margin-top: 0;"
+char *my_string = "Line 1 \
+Line 2";
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<p style="margin-top: 0; margin-bottom: .5em;"><code>printf("%s\n", my_string);</code> results in:</p>
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+Line 1 Line 2
+```
+
+</div>
+</div>
+
+And yet, contrary to the documentation, splitting a string across multiple lines without `\` continuations *is not an error* in the Windows RC compiler. Here's an example:
+
+```rc
+1 RCDATA {
+
+"foo
+bar"
+
+}
+```
+
+This will successfully compile, and the data of the `RCDATA` resource will end up as
+
+<pre style="overflow: visible; padding-top: 3.5em; padding-bottom: 3.5em;"><code class="language-none"><span class="token_string">66 6F 6F</span> <span style="outline: 2px dotted orange;">20</span> <span style="outline: 2px dotted red;">0A</span> <span class="token_string">62 61 72</span>   <span class="token_string">foo</span><span style="outline: 2px dotted orange; position:relative; display:inline-block;"> <span class="hexdump-tooltip below">space<i></i></span></span><span style="outline: 2px dotted red; position:relative; display:inline-block;">.<span class="hexdump-tooltip">\n<i></i></span></span><span class="token_string">bar</span></code></pre>
+
+I'm not sure why this is allowed, and I also don't have an explanation for why a space character sneaks into the resulting data out of nowhere. It's also worth noting that whitespace is collapsed in these should-be-invalid multiline strings. For example, this:
+
+```rc
+"foo
+
+    bar"
+```
+
+will get compiled into exactly the same data as above (with only a space and a newline between `foo` and `bar`).
+
+</aside></p>
+
+But, this on its own is only a minor nuisance from the perspective of implementing a resource compiler&mdash;it is undocumented behavior, but it's pretty easy to account for. The real problems start when someone actually uses `\` as intended.
+
+#### The collapse of whitespace is imminent
+
+C pop quiz: what will get printed in this example (i.e. what will `my_string` evaluate to)?
+
+```c
+char *my_string = "Line 1 \
+                   Line 2";
+
+#include <stdio.h>
+
+int main() {
+  printf("%s\n", my_string);
+  return 0;
+}
+```
+
+Let's compile it with a few different compilers to find out:
+
+```shellsession
+> zig run multilinestring.c -lc
+Line 1                    Line 2
+
+> clang multilinestring.c
+> a.exe
+Line 1                    Line 2
+
+> cl.exe multilinestring.c
+> multilinestring.exe
+Line 1                    Line 2
+```
+
+That is, the whitespace preceding "Line 2" is included in the string literal.
+
+<p><aside class="note">
+
+Note: In most C compiler implementations, the `\` is processed and removed during the preprocessing step. For example, here's the result when running the input through the `clang` preprocessor:
+
+```shellsession
+> clang -E -xc multilinestring.c
+# 1 "multilinestring.c" 2
+char *my_string = "Line 1                    Line 2";
+```
+
+Something odd, though, is that this is not how the MSVC compiler works. When running its preprocessor, we end up with this:
+
+```shellsession
+> cl.exe /E multilinestring.c
+#line 1 "multilinestring.c"
+char *my_string = "Line 1 \
+                   Line 2";
+```
+
+so in the MSVC implementation, it's up to the C parser to handle the `\`. This is not fully relevant to the Windows RC compiler, but it was surprising to me.
+
+</aside></p>
+
+However, the Windows RC compiler behaves differently here. If we pass the same example through *its* preprocessor, we end up with:
+
+```c
+#line 1 "multilinestring.c"
+char *my_string = "Line 1 \
+Line 2";
+```
+
+1. The `\` remains (similar to the MSVC compiler, see the note above)
+2. The whitespace before "Line 2" is removed
+
+So the value of `my_string` would be `Line 1 Line 2` (well, not really, since `char *my_string = ` doesn't have a meaning in `.rc` files, but you get the idea). This divergence in behavior from C has practical consequences. In [this `.rc` file](https://github.com/microsoft/Windows-classic-samples/blob/main/Samples/Win7Samples/winui/shell/appshellintegration/NonDefaultDropMenuVerb/NonDefaultDropMenuVerb.rc) from one of the [Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples) example programs, we see the following, which takes advantage of the `rc.exe`-preprocessor-specific-whitespace-collapsing behavior:
+
+```rc
+STRINGTABLE 
+BEGIN
+    // ...
+    IDS_MESSAGETEMPLATEFS   "The drop target is %s.\n\
+                            %d files/directories in HDROP\n\
+                            The path to the first object is\n\
+                            \t%s."
+    // ...
+END
+```
+
+Plus, in certain circumstances, this difference between `rc.exe` and C (like [other differences to C](#all-operators-have-equal-precedence)) can lead to bugs. This is a rather contrived example, but here's one way things could go wrong:
+
+```c
+// In foo.h
+#define FOO_TEXT "foo \
+                  bar"
+#define IDC_BUTTON_FOO 1001
+```
+```rc
+// In foo.rc
+#include "foo.h"
+
+1 DIALOGEX 0, 0, 275, 280
+BEGIN
+    PUSHBUTTON FOO_TEXT, IDC_BUTTON_FOO, 7, 73, 93, 14
+END
+```
+```c
+// In main.c
+#include "foo.h"
+
+// ...
+    HWND hFooBtn = GetDlgItem(hDlg, IDC_BUTTON_FOO);
+    // Let's say the button text was changed while it was hovered
+    // and now we want to set it back to the default
+    SendMessage(hFooBtn, WM_SETTEXT, 0, (LPARAM) _T(FOO_TEXT));
+// ...
+```
+
+In this example, the button defined in the `DIALOGEX` would start with the text `foo bar`, since that is the value that the Windows RC compiler resolves `FOO_TEXT` to be, but the `SendMessage` call would then set the text to <code>foo&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;bar</code>, since that's what the C compiler resolves `FOO_TEXT` to be.
+
+#### `resinator`'s behavior
+
+`resinator` uses the [Aro preprocessor](https://github.com/Vexu/arocc), which means it acts like a C compiler. In the future, `resinator` will likely fork Aro ([mostly to support UTF-16 encoded files](https://github.com/squeek502/resinator/issues/5)), which could allow matching the behavior of `rc.exe` in this case as well.
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk</span>
+
+### All operators have equal precedence
+
+TODO
+
+https://devblogs.microsoft.com/oldnewthing/20230313-00/?p=107928
+
+#### `resinator`'s behavior
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk, utterly baffling</span>
+
+### Escaping quotes is fraught
+
+From the [`STRINGTABLE` resource docs](https://learn.microsoft.com/en-us/windows/win32/menurc/stringtable-resource):
+
+> To embed quotes in the string, use the following sequence: `""`. For example, `"""Line three"""` defines a string that is displayed as follows:
+> ```
+> "Line three"
+> ```
+
+This is different from C, where `\"` is used to escape quotes within a string literal, so in C to get `"Line three"` you'd do `"\"Line three\""`.
+
+<p><aside class="note">
+
+Note: I have no idea why the method for quote escaping would differ from C. The only thing I can think of is that it would allow for the use of `\` within string literals in order to make specifying paths in string literals more convenient, but that can't be true because in e.g.
+
+```c
+"some\new\path"
+```
+
+the `\n` gets parsed into `0x0A`.
+
+</aside></p>
+
+This difference, though, can lead to some really bizarre results, since the preprocessor *still uses the C escaping rules*. Take this simple example:
+
+```none
+"\""BLAH"
+```
+
+Here's how that is seen from the perspective of the preprocessor:
+
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">string<i></i></span><span class="subject"><span class="token_string">"\""</span></span></span><span class="annotation"><span class="desc">identifier<i></i></span><span class="subject"><span class="token_identifier">BLAH</span></span></span><span class="annotation"><span class="desc">string (unfinished)<i></i></span><span class="subject"><span class="token_string">"</span></span></span></code></pre>
+
+And from the perspective of the compiler:
+
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">string<i></i></span><span class="subject"><span class="token_string">"\""BLAH"</span></span></span></code></pre>
+
+So, following from this, say you had this `.rc` file:
+
+```rc
+#define BLAH "hello"
+
+1 RCDATA { "\""BLAH" }
+```
+
+Since we know the preprocessor sees `BLAH` as an identifier and we've done `#define BLAH "hello"`, it will replace `BLAH` with `"hello"`, leading to this result:
+
+```rc
+1 RCDATA { "\"""hello"" }
+```
+
+which would now be parsed by the compiler as:
+
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">string<i></i></span><span class="subject"><span class="token_string">"\"""</span></span></span><span class="annotation"><span class="desc">identifier<i></i></span><span class="subject"><span class="token_identifier">hello</span></span></span><span class="annotation"><span class="desc">string<i></i></span><span class="subject"><span class="token_string">""</span></span></span></span></span></span></code></pre>
+
+and lead to a compile error:
+
+```
+test.rc(3) : error RC2104 : undefined keyword or key name: hello
+```
+
+This is just one example, but the general disagreement around escaped quotes between the preprocessor and the compiler can lead to some really unexpected error messages.
+
+#### Wait, but what actually happens to the backslash?
+
+Backing up a bit, I said that the compiler sees `"\""BLAH"` as one string literal token, so:
+
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;">1 <span class="token_keyword">RCDATA</span> <span class="token_punctuationn">{</span> <span class="annotation"><span class="desc">string<i></i></span><span class="subject"><span class="token_string" style="outline: 2px dotted rgba(150,150,150,0.5)">"\""BLAH"</span></span></span> <span class="token_punctuationn">}</span></code></pre>
+
+If we compile this, then the data of this `RCDATA` resource ends up as:
+
+```
+"BLAH
+```
+
+That is, the `\` fully drops out and the `""` is treated as an escaped quote. This seems to some sort of special case, as this behavior is not present for other unrecognized escape sequences, e.g. `"\k"` will end up as `\k` when compiled, and `"\"` will end up as `\`.
+
+
+#### `resinator`'s behavior
+
+Using `\"` within string literals is always an error, since (as mentioned) it can lead to things like unexpected macro expansions and hard-to-understand errors when the preprocessor and the compiler disagree.
+
+```resinatorerror
+test.rc:1:13: error: escaping quotes with \" is not allowed (use "" instead)
+1 RCDATA { "\""BLAH" }
+            ^~
+```
+
+This may change if it turns out `\"` is commonly used in the wild, but that seems unlikely to be the case.
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk</span>
+
+### That's not *my* `\a`
+
+The Windows RC compiler supports some (but not all) [C escape sequences](https://en.wikipedia.org/wiki/Escape_sequences_in_C) within string literals.
+
+<div class="grid-max-2-col">
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div class="box-border box-bg" style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
+
+<p style="margin-bottom:0; text-align: center;">Supported</p>
+
+- `\a`
+- `\n`
+- `\r`
+- `\t`
+- `\nnn` (or `\nnnnnnn` in wide literals)
+- `\xhh` (or `\xhhhh` in wide literals)
+
+<aside style="padding: 0 2em; opacity: 0.75; text-align:center;">
+
+(side note: In the Windows RC compiler, `\a` and `\t` are case-insensitive, while `\n` and `\r` are case-sensitive)
+
+</aside>
+
+</div>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div class="box-border box-bg" style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
+
+<p style="margin-bottom:0; text-align: center;">Unsupported</p>
+
+- `\b`
+- `\e`
+- `\f`
+- `\v`
+- `\'`
+- `\"` (see ["*Escaping quotes is fraught*"](#escaping-quotes-is-fraught))
+- `\?`
+- `\uhhhh`
+- `\Uhhhhhhhh`
+
+</div>
+</div>
+</div>
+
+All of the supported escape sequences behave similarly to how they do in C, with the exception of `\a`. In C, `\a` is translated to the hex value `0x07` (aka the "Alert (Beep, Bell)" control character), while the Windows RC compiler translates `\a` to `0x08` (aka the "Backspace" control character).
+
+On first glance, this seems like a bug, but there may be some historical reason for this that I'm missing the context for.
+
+#### `resinator`'s behavior
+
+`resinator` matches the behavior of the Windows RC compiler, translating `\a` to `0x08`.
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk, miscompilation</span>
+
+### Yes, that `MENU` over there (vague gesturing)
+
+As established in the intro, resource definitions typically have an `id`, like so:
+
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">id<i></i></span><span class="subject">1</span></span> <span class="token_identifier">FOO</span> <span class="token_punctuation">{</span> <span class="token_string">"bar"</span> <span class="token_punctuation">}</span></code></pre>
+
+The `id` can be either a number ("ordinal") or a string ("name"), and the type of the `id` is inferred by its contents. This mostly works as you'd expect:
+
+- If the `id` is all digits, then it's a number/ordinal
+- If the `id` is all letters, then it's a string/name
+- If the `id` is a mix of digits and letters, then it's a string/name
+
+Here's a few examples:
+
+<pre><code class="language-none"> 123    ───►  Ordinal: <span class="token_number">123</span>
+ ABC    ───►  Name: <span class="token_string">ABC</span>
+123ABC  ───►  Name: <span class="token_string">123ABC</span></code></pre>
+
+This is relevant, because when defining `DIALOG`/`DIALOGEX` resources, there is an optional `MENU` statement that can specify the `id` of a separately defined `MENU`/`MENUEX` resource to use. From [the `DIALOGEX` docs](https://learn.microsoft.com/en-us/windows/win32/menurc/dialogex-resource):
+
+<blockquote>
+<table style="width: 100%; text-align: left;">
+  <thead>
+    <tr>
+      <th>Statement</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><b>MENU</b> <i>menuname</i></code></td>
+      <td>Menu to be used. This value is either the name of the menu or its integer identifier.</td>
+    </tr>
+  </tbody>
+</table>
+</blockquote>
+
+Here's an example of that in action, where the `DIALOGEX` is attempting to specify that the `MENUEX` with the `id` of `1ABC` should be used:
+
+<pre><code class="language-c" style="display:block;"><span class="token_identifier" style="outline: 2px dotted orange;">1ABC</span> <span class="token_keyword">MENUEX</span>  <span class="token_function">◄╍╍╍╍╍╍╍╍╍╍╍╍╍╍┓</span>
+<span style="opacity: 50%;">{</span>                           <span class="token_function">┇</span>
+<span style="opacity: 50%;">  // ...</span>                    <span class="token_function">┇</span>
+<span style="opacity: 50%;">}</span>                           <span class="token_function">┇</span>
+                            <span class="token_function">┇</span>
+<span style="opacity: 50%;">1 DIALOGEX 0, 0, 640, 480</span>   <span class="token_function">┇</span>
+  <span class="token_keyword">MENU</span> <span class="token_identifier" style="outline: 2px dotted orange;">1ABC</span>  <span class="token_function">╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍┛</span>
+<span style="opacity: 50%;">{
+  // ...
+}</span></code></pre>
+
+However, this is not what actually occurs, as for some reason, the `MENU` statement has different rules around inferring the type of the `id`&mdash;for the `MENU` statement, whenever the first character is a number, then the whole `id` is interpreted as a number no matter what.
+
+The value of this "number" is determined using the same bogus methodology detailed in ["*Non-ASCII digits in number literals*"](#non-ascii-digits-in-number-literals), so in the case of `1ABC`, the value works out to 2899:
+
+<div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(3, 1fr);">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+1ABC
+```
+
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+'1' - '0' = 1
+'A' - '0' = 17
+'B' - '0' = 18
+'C' - '0' = 19
+```
+
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+ 1 * 1000 = 1000
+ 17 * 100 = 1700
+  18 * 10 =  180
+   19 * 1 =   19
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+            2899
+```
+
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">"numeric" id</i></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">numeric value of each "digit"</i></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">numeric value of the id</i></div>
+</div>
+
+Unlike ["*Non-ASCII digits in number literals*"](#non-ascii-digits-in-number-literals), though, it's now also possible to include characters in a "number" literal that have a *lower* ASCII value than the `'0'` character, meaning that attempting to get the numeric value for such a 'digit' will induce wrapping `u16` overflow:
+
+<div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(3, 1fr);">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+1!
+```
+
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+<pre style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"><code class="language-c"><span class="token_string">'1'</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_operator">-</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_string">'0'</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_operator">=</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_number">1</span><span class="token_ansi_c_whitespace token_whitespace">
+</span><span class="token_string">'!'</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_operator">-</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_string">'0'</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_operator">=</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_warning">-15</span><span class="token_ansi_c_whitespace token_whitespace">
+      </span><span class="token_warning">-15</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_operator">=</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_number">65521</span><span class="token_ansi_c_whitespace token_whitespace">
+</span></code></pre>
+
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+    1 * 10 =    10
+ 65521 * 1 = 65521
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+             65531
+```
+
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">"numeric" id</i></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">numeric value of each "digit"</i></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">numeric value of the id</i></div>
+</div>
+
+#### This is always a miscompilation
+
+In the following example using the same `1ABC` ID as above:
+
+```rc
+// In foo.rc
+1ABC MENU
+BEGIN
+  POPUP "Menu from .rc"
+  BEGIN
+    MENUITEM "Open File", 1
+  END
+END
+
+1 DIALOGEX 0, 0, 275, 280
+  CAPTION "Dialog from .rc"
+  MENU 1ABC
+BEGIN
+END
+```
+
+```c
+// In main.c
+// ...
+    HWND result = CreateDialogParamW(g_hInst, MAKEINTRESOURCE(1), hwnd, DialogProc, (LPARAM)NULL);
+// ...
+```
+
+This `CreateDialogParamW` call will fail with `The specified resource name cannot be found in the image file` because it will attempt to look for a menu resource with an integer ID of `2899`.
+
+If we add such a `MENU` to the `.rc` file:
+
+```rc
+2899 MENU
+BEGIN
+  POPUP "Wrong menu from .rc"
+  BEGIN
+    MENUITEM "Destroy File", 1
+  END
+END
+```
+
+then the dialog will successfully load with this new menu, but it's pretty obvious this is *not* what was intended:
+
+<div style="text-align: center;">
+<img style="margin-left:auto; margin-right:auto; display: block;" src="/images/every-rc-exe-bug-quirk-probably/rc-wrong-menu.png">
+<i class="caption">The misinterpretation of the ID can (at best) lead to an unexpected menu being loaded</i>
+</div>
+
+#### A related, but inconsequential, inconsistency
+
+As mentioned in ["*Special tokenization rules for names/IDs*"](#special-tokenization-rules-for-names-ids), when the `id` of a resource is a string/name, it is uppercased before being written to the `.res` file. This uppercasing is *not* done for the `MENU` statement of a `DIALOG`/`DIALOGEX` resource, so in this example:
+
+<pre><code class="language-c" style="display:block;"><span class="token_identifier">abc</span> <span class="token_keyword">MENUEX</span>
+<span style="opacity: 50%;">{</span>
+<span style="opacity: 50%;">  // ...</span>
+<span style="opacity: 50%;">}</span>
+
+<span style="opacity: 50%;">1 DIALOGEX 0, 0, 640, 480</span>
+  <span class="token_keyword">MENU</span> <span class="token_identifier">abc</span>
+<span style="opacity: 50%;">{
+  // ...
+}</span></code></pre>
+
+The `id` of the `MENUEX` resource would be compiled as `ABC`, but the `DIALOGEX` would write the `id` of its menu as `abc`. This ends up not mattering, though, because it appears that `LoadMenu` does a case-insensitive lookup for string IDs.
+
+#### `resinator`'s behavior
+
+`resinator` avoids the miscompilation and treats the `id` parameter of `MENU` statements in `DIALOG`/`DIALOGEX` resources exactly the same as the `id` of `MENU` resources.
+
+```resinatorerror
+test.rc:3:8: warning: the id of this menu would be miscompiled by the Win32 RC compiler
+  MENU 1ABC
+       ^~~~
+test.rc:3:8: note: the Win32 RC compiler would evaluate the id as the ordinal/number value 2899
+
+test.rc:3:8: note: to avoid the potential miscompilation, the first character of the id should not be a digit
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk</span>
+
+### If you're not last, you're irrelevant
+
+Many resource types have optional statements that can be specified between the resource type and the beginning of its body, e.g.
+
+```rc
+1 ACCELERATORS
+  LANGUAGE 0x09, 0x01
+  CHARACTERISTICS 0x1234
+  VERSION 1
+{
+  // ...
+}
+```
+
+Specifying multiple statements of the same type within a single resource definition is allowed, and the last occurrence of each statement type is the one that takes precedence, so the following would compile to the exact same `.res` as the example above:
+
+```rc
+1 ACCELERATORS
+  CHARACTERISTICS 1
+  LANGUAGE 0xFF, 0xFF
+  LANGUAGE 0x09, 0x01
+  CHARACTERISTICS 999
+  CHARACTERISTICS 0x1234
+  VERSION 999
+  VERSION 1
+{
+  // ...
+}
+```
+
+This is not necessarily a problem on its own (although I think it should at least be a warning), but it can inadvertently lead to some bizarre behavior, as we'll see in the next bug/quirk.
+
+
+#### `resinator`'s behavior
+
+`resinator` matches the Windows RC compiler behavior, but emits a warning for each ignored statement:
+
+```resinatorerror
+test.rc:2:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
+  CHARACTERISTICS 1
+  ^~~~~~~~~~~~~~~~~
+test.rc:3:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
+  LANGUAGE 0xFF, 0xFF
+  ^~~~~~~~~~~~~~~~~~~
+test.rc:5:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
+  CHARACTERISTICS 999
+  ^~~~~~~~~~~~~~~~~~~
+test.rc:7:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
+  VERSION 999
+  ^~~~~~~~~~~
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk, miscompilation</span>
+
+### Once a number, always a number
+
+The behavior described in ["*Yes, that `MENU` over there (vague gesturing)*"](#yes-that-menu-over-there-vague-gesturing) can also be induced in both `CLASS` and `MENU` statements of `DIALOG`/`DIALOGEX` resources via duplicate statements. As seen in ["*If you're not last, you're irrelevant*"](#if-you-re-not-last-you-re-irrelevant), multiple statements of the same type are allowed to be specified without much issue, but in the case of `CLASS` and `MENU`, if any of the duplicate statements are interpreted as a number, then the value of last statement of its type *is always interpreted as a number no matter what it contains*.
+
+<pre><code class="language-c" style="display:block;"><span style="opacity: 50%;">1 DIALOGEX 0, 0, 640, 480</span>
+  <span class="token_keyword">MENU</span> <span class="token_identifier">123</span> <span class="token_comment">// ignored, but causes the string below to be evaluated as a number</span>
+  <span class="token_keyword">MENU</span> <span class="token_identifier">IM_A_STRING_I_SWEAR</span>  <span class="token_function">────►</span>  <span class="token_function">8360</span>
+  <span class="token_keyword">CLASS</span> <span class="token_identifier">123</span> <span class="token_comment">// ignored, but causes the string below to be evaluated as a number</span>
+  <span class="token_keyword">CLASS</span> <span class="token_string">"Seriously, I'm a string"</span>  <span class="token_function">────►</span>  <span class="token_function">55127</span>
+<span style="opacity: 50%;">{
+  // ...
+}</span></code></pre>
+
+The algorithm for coercing the strings to a number is the same as the one outlined in ["*Yes, that `MENU` over there (vague gesturing)*"](#yes-that-menu-over-there-vague-gesturing), and, for the same reasons discussed there, this too is always a miscompilation.
+
+#### `resinator`'s behavior
+
+`resinator` avoids the miscompilation and emits warnings:
+
+```resinatorerror
+test.rc:2:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
+  MENU 123
+  ^~~~~~~~
+test.rc:4:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
+  CLASS 123
+  ^~~~~~~~~
+test.rc:5:9: warning: this class would be miscompiled by the Win32 RC compiler
+  CLASS "Seriously, I'm a string"
+        ^~~~~~~~~~~~~~~~~~~~~~~~~
+test.rc:5:9: note: the Win32 RC compiler would evaluate it as the ordinal/number value 55127
+
+test.rc:5:9: note: to avoid the potential miscompilation, only specify one class per dialog resource
+
+test.rc:3:8: warning: the id of this menu would be miscompiled by the Win32 RC compiler
+  MENU IM_A_STRING_I_SWEAR
+       ^~~~~~~~~~~~~~~~~~~
+test.rc:3:8: note: the Win32 RC compiler would evaluate the id as the ordinal/number value 8360
+
+test.rc:3:8: note: to avoid the potential miscompilation, only specify one menu per dialog resource
+```
 
 </div>
 
@@ -2553,6 +3207,23 @@ pre.annotated-code .desc i::after {
 @media (prefers-color-scheme: dark) {
 .not-eval-border {
   border-color: #111;
+}
+}
+
+.box-border {
+  border: 1px solid #eee;
+}
+@media (prefers-color-scheme: dark) {
+.box-border {
+  border-color: #111;
+}
+}
+.box-bg {
+  background: rgba(100,100,100,0.05);
+}
+@media (prefers-color-scheme: dark) {
+.box-bg {
+  background: rgba(50,50,50,0.2);
 }
 }
 

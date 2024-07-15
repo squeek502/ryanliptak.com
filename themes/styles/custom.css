@@ -266,7 +266,12 @@ pre {
 }
 
 .token_punctuation {
-  color: #999;
+  color: #57544B;
+}
+@media (prefers-color-scheme: dark) {
+  .token_punctuation {
+    color: #999;
+  }
 }
 
 .namespace {
@@ -293,7 +298,7 @@ pre {
   .token_deleted,
   .token_deletion,
   .token_error {
-    color: #AE2A73;
+    color: #C13683;
   }
 }
 
