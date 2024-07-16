@@ -6,7 +6,7 @@ local P, R, S = lpeg.P, lpeg.R, lpeg.S
 
 local lex = lexer.new('zigstacktrace', {lex_by_line = true})
 
-lex:add_rule('selector', token('selector', S('\t ')^0 * S('^~')^1))
+lex:add_rule('selector', token('selector', S('\t ')^0 * P("^") * P("~")^0 * lexer.newline))
 
 lex:add_rule('diagnostic', token('diagnostic',
   (lexer.any-S(":"))^1 * P(":") * lexer.number * P(":") * lexer.number * P(":"))
