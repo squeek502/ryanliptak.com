@@ -53,13 +53,20 @@ Because `.lua` source files rarely actually have embedded `NUL`s--especially out
 - [Code for fuzzing the Lua lexer](https://github.com/squeek502/fuzzing-lua)
 - [My Lua 5.1 implementation in Zig](https://github.com/squeek502/zua)
 
-<div><style scoped>
+<div>
+
+<style scoped>
 .nul-char {
-	/*background-color: #aa3333;
-	color: white;*/
 	color: #666666;
 	border: 1px dotted black;
 	padding: 1px 2px;
 	margin: 0 2px;
 }
-</style></div>
+@media (prefers-color-scheme: dark) {
+  .nul-char {
+    border-color: #999;
+  }
+}
+</style>
+
+</div>
