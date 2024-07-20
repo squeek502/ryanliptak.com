@@ -217,6 +217,8 @@ The problem is that the exact same procedure outlined above is erroneously follo
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">numeric value of the integer literal</i></div>
 </div>
 
+In other words, the `²` is treated as a base-10 "digit" with the value 130 (and `³` would be a base-10 "digit" with the value 131, `၅` ([`U+1045`](https://www.compart.com/en/unicode/U+1045)) would be a base-10 "digit" with the value 4117, etc).
+
 This particular bug/quirk is (presumably) due to the use of the [`iswdigit`](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/isdigit-iswdigit-isdigit-l-iswdigit-l) function, and the [same sort of bug/quirk exists with special `COM[1-9]` device names](https://googleprojectzero.blogspot.com/2016/02/the-definitive-guide-on-win32-to-nt.html).
 
 #### `resinator`'s behavior
@@ -530,53 +532,161 @@ Note: This behavior does not generally impact wide string literals, e.g. `L"Ó"`
 </div>
 
 <div class="bug-quirk-box">
-<span class="bug-quirk-category">parser bug/quirk</span>
+<span class="bug-quirk-category">parser bug/quirk, miscompilation</span>
 
 ### Non-ASCII accelerator characters
 
-The Windows RC compiler's error hints that this is the intended behavior (`control character out of range [^A - ^Z]`), but it actually allows for a large number of codepoints >= 0x80 to be used. Of those allowed, it treats them as if they were `A-Z` and subtracts `0x40` from the codepoint to convert it to a 'control character', but for arbitrary non-ASCII codepoints that just leads to garbage. The codepoints that are allowed may be based on some sort of Unicode-aware 'is character' function or something, but I couldn't really find a pattern to it. The full list of codepoints that trigger the error can be found [here](https://gist.github.com/squeek502/2e9d0a4728a83eed074ad9785a209fd0).
+The [`ACCELERATORS`](https://learn.microsoft.com/en-us/windows/win32/menurc/accelerators-resource) resource can be used to essentially define hotkeys for a program. In the message loop, the `TranslateAccelerator` function can be used to automatically turn the relevant keystrokes into `WM_COMMAND` messages with the associated `idvalue` as the parameter (meaning it can be handled like any other message coming from a menu, button, etc).
 
-> In `resinator`, control characters specified as a quoted string with a `^` in an `ACCELERATORS` resource (e.g. `"^C"`) must be in the range of `A-Z` (case insensitive).
+Simplified example from [Using Keyboard Accelerators](https://learn.microsoft.com/en-us/windows/win32/menurc/using-keyboard-accelerators):
+
+```rc
+1 ACCELERATORS {
+  "B", 300, CONTROL, VIRTKEY
+}
+```
+
+This associates the key combination `Ctrl + B` with the ID `300` which can then be handled in the message loop processing code like this:
+
+```c
+// ...
+        case WM_COMMAND: 
+            switch (LOWORD(wParam)) 
+            {
+                case 300:
+// ...
+```
+
+There are also a number of ways to specify the keys for an accelerator, but the one relevant here is specifying "control characters" using a string literal with a `^` character, e.g. `"^B"`.
+
+<p><aside class="note">
+
+Note: There *is* a difference between how `"^B", 300` and `"B", 300, CONTROL, VIRTKEY` are compiled, but in practical terms they seem roughly equivalent (both are triggered by `Ctrl + B` on my keyboard). I'm not familiar enough with the accelerator Win32 APIs to know how exactly they differ or when one should be used over the other.
+
+</aside></p>
+
+When specifying a control character using `^` with an ASCII character that is outside of the range of `A-Z` (case insensitive), the Windows RC compiler will give the following error:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; justify-content: center; flex-grow: 1; margin-top: 0;"
+1 ACCELERATORS {
+  "^!", 300
+}
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; justify-content: center; margin-top: 0;"
+test.rc(2) : error RC2154 : control character out of range [^A - ^Z]
+```
+
+</div>
+</div>
+
+However, contrary to what the error implies, many (but not all) non-ASCII characters outside the `A-Z` range are actually accepted. For example, this is *not* an error (when the file is encoded as UTF-8):
+
+```rc
+#pragma code_page(65001)
+1 ACCELERATORS {
+  "^Ξ", 300
+}
+```
+
+<p><aside class="note">
+
+My guess is that the allowed codepoints outside the `A-Z` range are due to an inadvertent use of the `iswalpha` function or similar (see [here](https://gist.github.com/squeek502/2e9d0a4728a83eed074ad9785a209fd0) for a list of every non-ASCII codepoint that triggers the `control character out of range` error in the Windows RC compiler).
+
+</aside></p>
+
+When evaluating these `^` strings, the final 'control character' value is determined by subtracting `0x40` from the ASCII uppercased value of the character following the `^`, so in the case of `^b` that would look like:
+
+<div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(3, 1fr);">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+b (0x62)
+```
+
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+B (0x42)
+```
+
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+0x42 - 0x40 = 0x02
+```
+
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">character (hex value)</i></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">uppercased (hex value)</i></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">control character value</i></div>
+</div>
+
+The same process is used for any allowed codepoints outside the `A-Z` range, but the uppercasing is only done for ASCII values, so in the example above with `Ξ` (the codepoint `U+039E`; Greek Capital Letter Xi), the value is calculated like this:
+
+<div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(2, 1fr);">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+Ξ (0x039E)
+```
+
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+0x039E - 0x40 = 0x035E
+```
+
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">codepoint (hex value)</i></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">control character value</i></div>
+</div>
+
+I believe this is a bogus value, since the final value of a control character is meant to be in the range of `0x01` (`^A`) through `0x1A` (`^Z`), which are treated specially. My assumption is that a value of `0x035E` would just be treated as the Unicode codepoint `U+035E` (Combining Double Macron), but I'm unsure exactly how I would go about testing this assumption since all aspects of the interaction between accelerators and non-ASCII key values are still fully opaque to me.
+
+#### `resinator`'s behavior
+
+In `resinator`, control characters specified as a quoted string with a `^` in an `ACCELERATORS` resource (e.g. `"^C"`) must be in the range of `A-Z` (case insensitive).
+
+```resinatorerror
+test.rc:3:3: error: invalid accelerator key '"^Ξ"': ControlCharacterOutOfRange
+  "^Ξ", 1
+  ^~~~~
+```
 
 </div>
 
 <div class="bug-quirk-box">
-<span class="bug-quirk-category">parser bug/quirk</span>
+<span class="bug-quirk-category">codepoint handling, miscompilation</span>
 
-### FONT parameter inheritance
+### Codepoint misbehavior/miscompilation
 
-The `weight` and `italic` parameters of a `FONT` statement get carried over to subsequent `FONT` statements attached to a `DIALOGEX` resource if the subsequent `FONT` statements don't provide those parameters, but `charset` doesn't (it will always have a default of `1` (`DEFAULT_CHARSET`) if not specified).
+There are a few different ASCII control characters/Unicode codepoints that cause strange behavior in the Windows RC compiler if they are put certain places in a `.rc` file. Each case is sufficiently different that they might warrant their own section, but I'm just going to lump them together into one section here.
 
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">codepoint handling</span>
-
-### U+0000 Null
+#### U+0000 Null
 
 The Windows RC compiler behaves very strangely when embedded `NUL` characters are in a `.rc` file. For example, `1 RCDATA { "a<0x00>" }` will give the error "unexpected end of file in string literal", but `1 RCDATA { "<0x00>" }` will "successfully" compile and result in an empty `.res` file (the `RCDATA` resource won't be included at all). Even stranger, whitespace seems to matter in terms of when it will error; if you add a space to the beginning of the `1 RCDATA { "a<0x00>" }` version then it "successfully" compiles but also results in an empty `.res`.
 
 > In `resinator`, embedded `NUL` (`<0x00>`) characters are always illegal anywhere in a `.rc` file.
 
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">codepoint handling</span>
-
-### U+0004 End of Transmission
+#### U+0004 End of Transmission
 
 The Windows RC compiler seemingly treats 'End of Transmission' (`<0x04>`) characters outside of string literals as a 'skip the next character' instruction when parsing, i.e. `RCDATA<0x04>x` gets parsed as if it were `RCDATA`.
 
-  TODO: Example/expand on this
+<pre class="annotated-code"><code class="language-rc" style="white-space: inherit;">1 RCDATA<span class="annotation"><span class="desc"><0x04><i></i></span><span class="subject"><span class="token_keyword">&#x04;</span></span></span>! { <span class="token_string">"foo"</span> }</code></pre>
 
 > In `resinator`, embedded 'End of Transmission' (`<0x04>`) characters are always illegal outside of string literals.
 
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">codepoint handling</span>
-
-### U+007F Delete
+#### U+007F Delete
 
 The Windows RC compiler seemingly treats `<0x7F>` characters as a terminator in some capacity. A few examples:
     - `1 RC<0x7F>DATA {}` gets parsed as `1 RC DATA {}`
@@ -585,51 +695,45 @@ The Windows RC compiler seemingly treats `<0x7F>` characters as a terminator in 
 
 > In `resinator`, embedded 'Delete' (`<0x7F>`) characters are always illegal anywhere in a `.rc` file.
 
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">codepoint handling</span>
-
-### U+001A Substitute
+#### U+001A Substitute
 
 The Windows RC compiler treats `<0x1A>` characters as an 'end of file' maker but it can also lead to (presumed) infinite loops. For example, `1 MENUEX FIXED<0x1A>VERSION` will cause the Win32 implementation to hang, but `1 RCDATA {} <0x1A> 2 RCDATA {}` will succeed but only the `1 RCDATA {}` resource will make it into the `.res`.
 
 > In `resinator`, embedded 'Substitute' (`<0x1A>`) characters are always illegal anywhere in a `.rc` file. Note: The preprocessor treats it as an 'end of file' marker so instead of getting an error it will likely end up as an EOF error. This would change if `resinator` uses a custom preprocessor.
 
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">codepoint handling</span>
-
-### U+FEFF Byte Order Mark
+#### U+FEFF Byte Order Mark
 
 For the most part, the Windows RC compiler skips over byte order marks (BOM) everywhere, even within string literals, within names, etc [e.g. `RC<U+FEFF>DATA` will compile as if it were `RCDATA`]). However, there are edge cases where a BOM will cause cryptic 'compiler limit : macro definition too big' errors (e.g. `1<U+FEFF>1` as a number literal).
 
 > In `resinator`, the byte order mark (`<U+FEFF>`) is always illegal anywhere in a `.rc` file except the very start.
 
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">codepoint handling</span>
-
-### U+E000 Private Use Character
+#### U+E000 Private Use Character
 
 This behaves similarly to the byte order mark (it gets skipped/ignored wherever it is), so the same reasoning applies (although `<U+E000>` seems to avoid causing errors like the BOM does).
 
 > In `resinator`, the private use character `<U+E000>` is always illegal anywhere in a `.rc` file.
 
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">codepoint handling</span>
-
-### U+0900, U+0A00, U+0A0D, U+2000, U+FFFE, U+0D00
+#### U+0900, U+0A00, U+0A0D, U+2000, U+FFFE, U+0D00
 
 The Windows RC compiler will error and/or ignore these codepoints when used outside of string literals, but not always. When used within string literals, the Windows RC compiler will miscompile them (either swap the bytes of the UTF-16 code unit in the `.res`, omit it altogether, or some other strange interaction).
 
 See [Certain codepoints get miscompiled when in string literals](#certain-codepoints-get-miscompiled-when-in-string-literals) for more information about the miscompilation.
 
 > In `resinator`, the codepoints `U+0900`, `U+0A00`, `U+0A0D`, `U+2000`, `U+FFFE`, and `U+0D00` are illegal outside of string literals, and emit a warning if used inside string literals
+
+#### `resinator`'s behavior
+
+Any codepoints that cause misbehaviors are either a compile error:
+
+```resinatorerror
+
+```
+
+or the miscompilation is avoided and a warning is emitted:
+
+```resinatorerror
+
+```
 
 </div>
 
@@ -755,24 +859,7 @@ Some commonalities between all the reproductions of this bug I've found so far:
 <div class="bug-quirk-box">
 <span class="bug-quirk-category">miscompilation</span>
 
-### Padding bytes are omitted if a comma is omitted
-
----
-
-TODO: incorporate anything left out from:
-
-The Windows RC compiler will fail to add padding to get to `DWORD`-alignment before the value and sometimes step on the null-terminator of the `VALUE`'s key string.
-
-> `resinator` will avoid a miscompilation when a `VALUE` within a `VERSIONINFO` has the comma between its key and its first value omitted (but only if the value is a quoted string), and will emit a warning
-
-After the key name of a node within a `VERSIONINFO` resource, the Win32 RC compiler will fail to add padding to get back to `DWORD` alignment if:
-
-- the comma between the key and the first value in a `VALUE` statement is omitted, *and*
-- the first value is a quoted string
-
-That is, `VALUE "key" "value"` will miscompile but `VALUE "key", "value"` or `VALUE "key" 1` won't.
-
----
+### Your fate will be determined by a comma
 
 Version information is specified using key/value pairs within `VERSIONINFO` resources. The value data should always start at a 4-byte boundary, so after the key data is written, a variable number of padding bytes are written to get back to 4-byte alignment:
 
@@ -825,7 +912,25 @@ Which will print:
 alue
 ```
 
-The problems don't end there, though&mdash;`VERSIONINFO` is compiled into a tree structure, meaning the misreading of one node affects the reading of future nodes. Here's a (simplified) real-world `VERSIONINFO` resource definition from a `.rc` file in [Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples):
+Plus, depending on the length of the key string, it can end up being even worse, since the value could end up being written over the top of the null terminator of the key. Here's an example:
+
+<div style="text-align: center; display: grid; grid-gap: 10px; grid-template-columns: repeat(2, 1fr);">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+    <code class="language-none"><span style="opacity: 50%;">1 VERSIONINFO {</span>
+  <span class="token_keyword">VALUE</span> <span style="background: rgba(255,0,0,.1);">"ke"</span> <span style="background: rgba(0,255,0,.1);">"value"</span>
+<span style="opacity: 50%;">}</span></code>
+  </pre>
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+    <code class="language-none"><span style="opacity: 25%;">......</span><span style="background: rgba(255,0,0,.1);">k.e.</span><span style="background: rgba(0,255,0,.1);">v.a.l.
+u.e...</span><span style="opacity: 25%;">..........</span></code>
+  </pre>
+</div>
+</div>
+
+And the problems don't end there&mdash;`VERSIONINFO` is compiled into a tree structure, meaning the misreading of one node affects the reading of future nodes. Here's a (simplified) real-world `VERSIONINFO` resource definition from a random `.rc` file in [Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples):
 
 ```rc
 VS_VERSION_INFO VERSIONINFO
@@ -851,7 +956,7 @@ BEGIN
 END
 ```
 
-And here's the Properties window of an `.exe` compiled with and without commas between all the key/value pairs:
+and here's the Properties window of an `.exe` compiled with and without commas between all the key/value pairs:
 
 <div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
@@ -864,6 +969,17 @@ And here's the Properties window of an `.exe` compiled with and without commas b
 <i class="caption">...but completely broken if the commas are omitted</i>
 </div>
 </div>
+
+<p><aside class="note">
+
+Note: This miscompilation will only occur when:
+
+- the comma between the key and the first value in a `VALUE` statement is omitted, *and*
+- the first value is a quoted string
+
+That is, `VALUE "key" "value"` will miscompile but `VALUE "key", "value"` or `VALUE "key" 1` won't.
+
+</aside></p>
 
 #### `resinator`'s behavior
 
@@ -3026,6 +3142,15 @@ test.rc:3:8: note: the Win32 RC compiler would evaluate the id as the ordinal/nu
 
 test.rc:3:8: note: to avoid the potential miscompilation, only specify one menu per dialog resource
 ```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk</span>
+
+### FONT parameter inheritance
+
+The `weight` and `italic` parameters of a `FONT` statement get carried over to subsequent `FONT` statements attached to a `DIALOGEX` resource if the subsequent `FONT` statements don't provide those parameters, but `charset` doesn't (it will always have a default of `1` (`DEFAULT_CHARSET`) if not specified).
 
 </div>
 
