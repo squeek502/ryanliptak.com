@@ -99,10 +99,9 @@ header { margin-top: 15px; }
 .header-menu { list-style: none; padding:0; margin:0; display: inline-block; }
 .header-menu > li { display: inline-block; margin-right: 10px; }
 
-.note {
+.note, aside.update, aside.warning {
   border-left: .25rem solid;
   border-right: .25rem solid;
-  border-color: #ddd;
   background-color: #f4f4f4;
   margin-left: 0.5rem;
   margin-right: 0.5rem;
@@ -110,23 +109,21 @@ header { margin-top: 15px; }
   padding-right: 1rem;
   padding-top: 0.25rem;
   padding-bottom: 0.25rem;
+}
+.note {
+  border-color: #ddd;
 }
 /* Inline code within a note */
 .note > code, .note :not(pre) > code,
-.note pre[class*="language-"] {
+.note pre {
   background: #e7e7e7;
 }
 aside.update {
-  border-left: .25rem solid;
-  border-right: .25rem solid;
   border-color: #79C;
-  background-color: #f4f4f4;
-  margin-left: 0.5rem;
-  margin-right: 0.5rem;
-  padding-left: 1rem;
-  padding-right: 1rem;
-  padding-top: 0.25rem;
-  padding-bottom: 0.25rem;
+}
+aside.warning {
+  background-color: #EEE6D6;
+  border-color: #CCAF77;
 }
 
 mark.success { background-color: #ECFFCFFF; }
@@ -445,7 +442,7 @@ pre {
   .blog-post h2, .blog-post h3, .blog-post h4, .blog-post h5, .blog-post h6 {
     border-color: rgba(255,255,255,0.25);
   }
-  aside.update, .note {
+  aside.update, .note, aside.warning {
     background-color: #222;
   }
   .note {
@@ -454,11 +451,15 @@ pre {
   aside.update {
     border-color: #248;
   }
+  aside.warning {
+    background-color: #2A2721;
+    border-color: #B28331;
+  }
   /* Inline code within a note */
   .note > code, .note :not(pre) > code,
-  .note pre[class*="language-"],
-  .update > code, .update :not(pre) > code,
-  .update pre[class*="language-"] {
+  .note pre,
+  aside > code, aside :not(pre) > code,
+  aside pre {
     background: #1a1a1a;
   }
 
