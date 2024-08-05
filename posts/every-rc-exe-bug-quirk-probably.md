@@ -392,7 +392,13 @@ If we change the previous example to only have one dangling literal for its inco
 FOO
 ```
 
-Then `rc.exe` *will always successfully compile it* (and it won't try to read from the file `FOO`). That is, a single dangling literal at the end of a file is fully allowed, and it is just treated as if it doesn't exist (there's no corresponding resource in the resulting `.res` file).
+Then `rc.exe` *will successfully compile it* (and it won't try to read from the file `FOO`). That is, a single dangling literal at the end of a file is fully allowed, and it is just treated as if it doesn't exist (there's no corresponding resource in the resulting `.res` file).
+
+<p><aside class="note">
+
+Note: There are a few particular dangling literals that do cause an error: `LANGUAGE`, `VERSION`, `CHARACTERISTICS`, and `STRINGTABLE`. This is because those keywords can be the beginning of a top-level declaration (e.g. valid usage of `CHARACTERISTICS` is `CHARACTERISTICS <number>`, so `CHARACTERISTICS` with no number afterwards triggers `error RC2140 : CHARACTERISTICS not a number`)
+
+</aside></p>
 
 It also turns out that there are three `.rc` files in [Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples) that rely on this behavior ([1](https://github.com/microsoft/Windows-classic-samples/blob/a47da3d4551b74bb8cc1f4c7447445ac594afb44/Samples/CredentialProvider/cpp/resources.rc), [2](https://github.com/microsoft/Windows-classic-samples/blob/a47da3d4551b74bb8cc1f4c7447445ac594afb44/Samples/Win7Samples/security/credentialproviders/sampleallcontrolscredentialprovider/resources.rc), [3](https://github.com/microsoft/Windows-classic-samples/blob/a47da3d4551b74bb8cc1f4c7447445ac594afb44/Samples/Win7Samples/security/credentialproviders/samplewrapexistingcredentialprovider/resources.rc)), so in order to fully pass [win32-samples-rc-tests](https://github.com/squeek502/win32-samples-rc-tests/), it is necessary to allow a dangling literal at the end of a file.
 
@@ -1436,6 +1442,27 @@ The Windows RC compiler will erroneously add too many padding bytes after the 'e
 
 ### `CONTROL` class specified as a number
 
+A generic `CONTROL` is specified like this:
+
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">class<i></i></span><span class="subject"><span class="token_keyword">CONTROL</span></span></span><span class="token_punctuation">,</span> <span class="token_string">"foo"</span><span class="token_punctuation">,</span> 1<span class="token_punctuation">,</span> <span class="annotation"><span class="desc">class name<i></i></span><span class="subject"><span class="token_keyword">BUTTON</span></span></span><span class="token_punctuation">,</span> <span class="token_identifier">1</span><span class="token_punctuation">,</span> 2<span class="token_punctuation">,</span> 3<span class="token_punctuation">,</span> 4<span class="token_punctuation">,</span> 5</code></pre>
+
+The `class name` can be one of `BUTTON`, `EDIT`, `STATIC`, `LISTBOX`, `SCROLLBAR`, `COMBOBOX`. Internally, these are just predefined values that compile down to numeric integers:
+
+```
+BUTTON    ──► 0x80
+EDIT      ──► 0x81
+STATIC    ──► 0x82
+LISTBOX   ──► 0x83
+SCROLLBAR ──► 0x84
+COMBOBOX  ──► 0x85
+```
+
+There's plenty of precedence within the Windows RC compiler that you can swap out a predefined type for its underlying integer and get the same result, and in indeed the Windows RC compiler does not complain if you try to do so:
+
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="token_keyword">CONTROL</span><span class="token_punctuation">,</span> <span class="token_string">"foo"</span><span class="token_punctuation">,</span> 1<span class="token_punctuation">,</span> <span class="annotation"><span class="desc">class name<i></i></span><span class="subject"><span class="token_identifier">0x80</span></span></span><span class="token_punctuation">,</span> <span class="token_identifier">1</span><span class="token_punctuation">,</span> 2<span class="token_punctuation">,</span> 3<span class="token_punctuation">,</span> 4<span class="token_punctuation">,</span> 5</code></pre>
+
+TODO: finish this (and fixup the above)
+
 The Windows RC compiler will incorrectly encode control classes specified as numbers, seemingly using some behavior that might be left over from the 16-bit RC compiler. As far as I can tell, it will always output an unusable dialog template if a CONTROL's class is specified as a number.
 
 > `resinator` will avoid a miscompilation when a generic CONTROL has its control class specified as a number, and will emit a warning
@@ -1447,7 +1474,138 @@ The Windows RC compiler will incorrectly encode control classes specified as num
 
 ### Mismatch in length units in `VERSIONINFO` nodes
 
+A `VALUE` within a `VERSIONINFO` resource is specified using this syntax:
+
+```rc
+VALUE <name>, <value(s)>
+```
+
+The `value(s)` can be specified as either number literals or quoted string literals, like so:
+
+```rc
+1 VERSIONINFO {
+  VALUE "numbers", 123, 456
+  VALUE "strings", "foo", "bar"
+}
+```
+
+Each `VALUE` is compiled into a structure that contains the length of its value data, but the unit used for the length varies:
+
+- For strings, the string data is written as UTF-16, and the length is given in UTF-16 code units (2 bytes per code unit)
+- For numbers, the numbers are written either as `u16` or `u32` (depending on the presence of an `L` suffix), and the length is given in bytes
+
+So, for the above example, the `"numbers"` value would be compiled into a node with:
+
+- "Binary" data, meaning the length is given in bytes
+- A length of `4`, since each number literal is compiled as a `u16`
+- Data bytes of <code class="hexdump"><span class="o1d o-clr3">7B 00</span></code> <code class="hexdump"><span class="o1d o-clr4">C8 01</span></code>, where <code class="hexdump"><span class="o1d o-clr3">7B 00</span></code> is `123` and <code class="hexdump"><span class="o1d o-clr4">C8 01</span></code> is `456` (as little-endian `u16`)
+
+and the `"strings"` value would be compiled into a node with:
+
+- "String" data, meaning the length is given in UTF-16 code units
+- A length of `8`, since each string is 3 UTF-16 code units plus a `NUL`-terminator
+- Data bytes of <code class="hexdump"><span class="o1d o-clr1">66 00 6F 00 6F 00 00 00</span> <span class="o1d o-clr2">62 00 61 00 72 00 00 00</span></code>, where <code class="hexdump"><span class="o1d o-clr1">66 00 6F 00 6F 00 00 00</span></code> is `"foo"` and <code class="hexdump"><span class="o1d o-clr2">62 00 61 00 72 00 00 00</span></code> is `"bar"` (both as `NUL`-terminated little-endian UTF-16)
+
+This is a bit bizarre, but when separated out like this it works fine. The problem is that there is nothing stopping you from mixing strings and numbers in one value, in which case the Windows RC compiler freaks out and writes the type as "binary" (meaning the length should be interpreted as a byte count), but the length as a mixture of byte count and UTF-16 code unit count. For example, with this resource:
+
+```rc
+1 VERSIONINFO {
+  VALUE "something", "foo", 123
+}
+```
+
+It value's data will get compiled into these bytes: <code class="hexdump"><span class="o1d o-clr1">66 00 6F 00 6F 00 00 00</span> <span class="o1d o-clr3">7B 00</span></code>, where <code class="hexdump"><span class="o1d o-clr1">66 00 6F 00 6F 00 00 00</span></code> is `"foo"` (as `NUL`-terminated little-endian UTF-16) and <code class="hexdump"><span class="o1d o-clr3">7B 00</span></code> is `123` (as a little-endian `u16`). This makes for a total of 10 bytes (8 for `"foo"`, 2 for `123`), but the Windows RC compiler erroneously reports the value's data length as 6 (4 for `"foo"` [counted as UTF-16 code units], and 2 for `123` [counted as bytes]).
+
+This miscompilation has similar results as those detailed in ["*Your fate will be determined by a comma*"](#your-fate-will-be-determined-by-a-comma):
+- The full data of the value will not be read by a parser
+- Due to the tree structure of `VERSIONINFO` resource data, this has knock-on effects on all following nodes, meaning the entire resource will be mangled
+
+---
+
+TODO: decide if any part of the stuff between these &lt;hr&gt;s is worth keeping
+
+So, for the above example, the `"numbers"` value would be compiled into:
+
+<!--TODO center hexdump vertically, convert desc: value to two-column grid-->
+
+<div class="grid-max-2-col">
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<pre class="hexdump" style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"><code><span class="o1d o-clr1">1C 00</span> <span class="o1d o-clr2">04 00</span> <span class="o1d o-clr3">00 00</span> <span class="o1d o-clr4">6e 00</span>  <span class="o1d o-clr1">..</span><span class="o1d o-clr2">..</span><span class="o1d o-clr3">..</span><span class="o1d o-clr4">n.</span>
+<span class="o1d o-clr4">75 00 6D 00 62 00 65 00</span>  <span class="o1d o-clr4">u.m.b.e.</span>
+<span class="o1d o-clr4">72 00 73 00 00 00</span> <span class="o1d o-clr5">00 00</span>  <span class="o1d o-clr4">r.s...</span><span class="o1d o-clr5">..</span>
+<span class="o1d o-clr1">7B 00 C8 01</span>              <span class="o1d o-clr1">TODO</span></code></pre>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div class="hexdump box-border" style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; padding: 1em;">
+<div class="o1d o-clr1" style="margin-bottom: 0.5em;">Total node length (in bytes): 28</div>
+<div class="o1d o-clr2" style="margin-bottom: 0.5em;">Value length (in bytes): 4</div>
+<div class="o1d o-clr3" style="margin-bottom: 0.5em;">Value type (0=binary, 1=string): 0 (binary)</div>
+<div class="o1d o-clr4" style="margin-bottom: 0.5em;">Name: <code>numbers</code> as UTF-16, <code>NUL</code>-terminated</div>
+<div class="o1d o-clr5" style="margin-bottom: 0.5em;">Padding bytes: 2 bytes to get to 4-byte alignment</div>
+<div class="o1d o-clr1" style="margin-bottom: 0.5em;">Value data: Two little-endian <code>u16</code> integers for <code>123</code> and <code>456</code>, respectively</div>
+</div>
+</div>
+</div>
+
+```
+1c00 0400 0000 6e00  ......n.
+7500 6d00 6200 6500  u.m.b.e.
+7200 7300 0000 0000  r.s.....
+7b00 c801            
+```
+
+<pre class="annotated-code"><code class="language-none" style="white-space: inherit;"><span class="annotation"><span class="desc">total node length (in bytes)<i></i></span><span class="subject">28</span></span> <span class="annotation"><span class="desc">value length (in bytes)<i></i></span><span class="subject">4</span></span> <span class="annotation"><span class="desc">value type<i></i></span><span class="subject">&lt;binary&gt;</span></span> <span class="annotation"><span class="desc">name<i></i></span><span class="subject">&lt;"numbers" as UTF-16&gt;</span></span> <span class="annotation"><span class="desc">value data<i></i></span><span class="subject">7b00 c801</span></span></code></pre>
+
+```
+2800 0800 0100 7300 7400 7200 6900 6e00 6700 7300 0000 0000 6600 6f00 6f00 0000 6200 6100 7200 0000
+```
+
+```rc
+1 VERSIONINFO {
+  VALUE "something", "foo", 123
+}
+```
+
 The data length of a `VERSIONNODE` for strings is counted in UTF-16 code units instead of bytes. This can get especially weird if numbers and strings are intermixed within a `VERSIONNODE`'s data, e.g. `VALUE "key", 1, 2, "ab"` will end up reporting a data length of 7 (2 for each number, 1 for each UTF-16 character, and 1 for the null-terminator of the "ab" string), but the real (as written to the `.res`) length of the data in bytes is 10 (2 for each number, 2 for each UTF-16 character, and 2 for the null-terminator of the "ab" string). This is detailed in [this The Old New Thing post](https://devblogs.microsoft.com/oldnewthing/20061222-00/?p=28623).
+
+---
+
+#### The return of the meaningful comma
+
+Before, I said that string values were compiled as `NUL`-terminated UTF-16 strings, but this is only the case when either:
+- It is the last data element of a `VALUE`, or
+- There is a comma separating it from the element after it
+
+So, this:
+
+```rc
+1 VERSIONINFO {
+  VALUE "strings", "foo", "bar"
+}
+```
+
+will be compiled with a `NUL` terminator after both `foo` and `bar`, but this:
+
+```rc
+1 VERSIONINFO {
+  VALUE "strings", "foo" "bar"
+}
+```
+
+will be compiled only with a `NUL` terminator after `bar`. This is also similar to ["*Your fate will be determined by a comma*"](#your-fate-will-be-determined-by-a-comma), but unlike that comma quirk, I don't consider this one a miscompilation because the result is not invalid/mangled, and there is a possible use-case for this behavior (concatenating two or more string literals together). However, this behavior is not mentioned in the documentation, so it's unclear if it's actually intended.
+
+#### `resinator`'s behavior
+
+`resinator` avoids the length-related miscompilation and emits a warning:
+
+```resinatorerror
+test.rc:2:22: warning: the byte count of this value would be miscompiled by the Win32 RC compiler
+  VALUE "something", "foo", 123
+                     ^~~~~~~~~~
+test.rc:2:22: note: to avoid the potential miscompilation, do not mix numbers and strings within a value
+```
+
+but matches the "meaningful comma" behavior of the Windows RC compiler.
 
 </div>
 
@@ -1923,7 +2081,7 @@ If the reported size of an image is larger than the size of the `.ico`/`.cur` fi
 - Write zeroes for any bytes that are past the end of the file, except
 - Once it has written 0x4000 bytes total, it will repeat these steps again and again until it reaches the full reported size
 
-Because a `.ico`/`.cur` can contain up to 65535 images, and each image within can report its size as up to 2 GiB (more on this later), this means that a small (< 1 MiB) maliciously constructed `.ico`/`.cur` could cause the Windows RC compiler to attempt to write up to 127 TiB of data to the `.res` file.
+Because a `.ico`/`.cur` can contain up to 65535 images, and each image within can report its size as up to 2 GiB (more on this in the next bug/quirk), this means that a small (< 1 MiB) maliciously constructed `.ico`/`.cur` could cause the Windows RC compiler to attempt to write up to 127 TiB of data to the `.res` file.
 
 #### `resinator`'s behavior
 
@@ -2497,7 +2655,7 @@ If a filename evaluates to a string that contains a `NUL` (`0x00`) character, th
 1 RCDATA "hello\x00world"
 ```
 
-will try to read from the file `hello`.
+will try to read from the file `hello`. This is understandable, but doesn't exactly seem like desirable behavior since it happens silently.
 
 #### `resinator`'s behavior
 
@@ -3815,6 +3973,28 @@ The `weight` and `italic` parameters of a `FONT` statement get carried over to s
 
 </div>
 
+TODO: brief descriptions of potential bugs/quirks
+- `text` param of dialog controls can be a number, but not a number expression
+- undocumented CLI options
+
+// BEDIT is mentioned here, but is not actually recognized by rc.exe:
+// https://learn.microsoft.com/en-us/windows/win32/menurc/dialogex-resource#edit-control-statements
+// HEDIT is undocumented outside of
+// https://learn.microsoft.com/en-us/windows/win32/menurc/dialogex-resource#edit-control-statements
+// IEDIT is undocumented outside of
+// https://learn.microsoft.com/en-us/windows/win32/menurc/dialogex-resource#edit-control-statements
+// The docs say that GROUPBOX is DIALOGEX-only, but it is not an error in DIALOG resources
+// https://learn.microsoft.com/en-us/windows/win32/menurc/groupbox-control
+// USERBUTTON is undocumented outside of
+// https://learn.microsoft.com/en-us/windows/win32/menurc/dialogex-resource#button-control-statements
+
+- `HTML` can use a raw data block even though it is undocumented
+- docs say GRAYED and INACTIVE cannot be used together, but there is no error/warning
+- L suffix in number expressions are infectious: `1L + 65537` results in a u32 with value 65538
+- FONT allows empty values for weight and charset in DIALOGEX but italic cannot be empty
+- General 'comma rules are inconsistent' type thing
+- semicolons as pseudo-comments/undocumented comment syntax (see "semicolons" test in test/parse.zig)
+
 <div>
 
 <style scoped>
@@ -4156,8 +4336,8 @@ pre code .inblock { position:relative; display:inline-block; }
 .hexdump .bg-clr2 { background: rgba(0,0,255,.1); }
 .hexdump .o-clr3 { outline-color: rgba(150,0,255); }
 .hexdump .bg-clr3 { background: rgba(150,0,255,.1); }
-.hexdump .o-clr4 { outline-color: rgba(0,255,0); }
-.hexdump .bg-clr4 { background: rgba(0,255,0,.1); }
+.hexdump .o-clr4 { outline-color: rgba(0,170,0); }
+.hexdump .bg-clr4 { background: rgba(0,170,0,.1); }
 .hexdump .o-clr5 { outline-color: rgba(124,70,0); }
 .hexdump .bg-clr5 { background: rgba(124,70,0,.1); } 
 @media (prefers-color-scheme: dark) {
