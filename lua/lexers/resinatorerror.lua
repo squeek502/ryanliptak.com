@@ -6,14 +6,20 @@ local P, R, S = lpeg.P, lpeg.R, lpeg.S
 
 local lex = lexer.new('zigstacktrace', {lex_by_line = true})
 
-lex:add_rule('selector', token('selector', S('\t ')^0 * P("^") * P("~")^0 * lexer.newline))
+lex:add_rule('selector', token('selector', S('\t ')^0 * P("~")^0 * P("^") * P("~")^0 * lexer.newline))
 
 lex:add_rule('diagnostic', token('diagnostic',
   (lexer.any-S(":"))^1 * P(":") * lexer.number * P(":") * lexer.number * P(":"))
   * lexer.space^1
   * (token('error', P("error:")) + token('note', P("note:")) + token('warning', P("warning:")))
   * lexer.space^1 * token('diagnostic', lexer.any^1))
+lex:add_rule('clidiagnostic', token('clidiagnostic',
+  (lexer.any-S(":"))^1 * P(":"))
+  * lexer.space^1
+  * (token('error', P("error:")) + token('note', P("note:")) + token('warning', P("warning:")))
+  * lexer.space^1 * token('diagnostic', lexer.any^1))
 lex:add_style('diagnostic', '$(style.bold)')
+lex:add_style('clidiagnostic', '$(style.bold)')
 lex:add_style('error', '$(style.bold)')
 lex:add_style('note', '$(style.bold)')
 lex:add_style('warning', '$(style.bold)')

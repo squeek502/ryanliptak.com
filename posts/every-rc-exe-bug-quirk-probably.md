@@ -16,11 +16,11 @@ My resource compiler implementation, [`resinator`](https://github.com/squeek502/
 
 <p><aside class="note">
 
-Note: While this list is thorough, it is only indicative of my current understanding of `rc.exe`, which can always be incorrect. Even in the process of writing this article, I found new edge cases and [had to correct my implementation of certain aspects of the compiler](https://github.com/squeek502/resinator/commit/fda2c685e5f59b79816bb0e7186d24b93a8c77b9).
+Note: While this list is thorough, it is only indicative of my current understanding of `rc.exe`, which can always be incorrect. Even in the process of writing this article, I found new edge cases and had to correct my implementation of certain aspects of the compiler.
 
 </aside></p>
 
-## Who is this for?
+## Who is this article for?
 
 - If you work at Microsoft, consider this a large list of bug reports (of particular note, see everything labeled 'miscompilation')
   + If you're [Raymond Chen](https://devblogs.microsoft.com/oldnewthing/author/oldnewthing), then consider this an extension/homage to all the (fantastic, very helpful) blog posts about Windows resources in [The Old New Thing](https://devblogs.microsoft.com/oldnewthing/)
@@ -400,7 +400,7 @@ Note: There are a few particular dangling literals that do cause an error: `LANG
 
 </aside></p>
 
-It also turns out that there are three `.rc` files in [Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples) that rely on this behavior ([1](https://github.com/microsoft/Windows-classic-samples/blob/a47da3d4551b74bb8cc1f4c7447445ac594afb44/Samples/CredentialProvider/cpp/resources.rc), [2](https://github.com/microsoft/Windows-classic-samples/blob/a47da3d4551b74bb8cc1f4c7447445ac594afb44/Samples/Win7Samples/security/credentialproviders/sampleallcontrolscredentialprovider/resources.rc), [3](https://github.com/microsoft/Windows-classic-samples/blob/a47da3d4551b74bb8cc1f4c7447445ac594afb44/Samples/Win7Samples/security/credentialproviders/samplewrapexistingcredentialprovider/resources.rc)), so in order to fully pass [win32-samples-rc-tests](https://github.com/squeek502/win32-samples-rc-tests/), it is necessary to allow a dangling literal at the end of a file.
+It also turns out that there are three `.rc` files in [Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples) that (accidentally, presumably) rely on this behavior ([1](https://github.com/microsoft/Windows-classic-samples/blob/a47da3d4551b74bb8cc1f4c7447445ac594afb44/Samples/CredentialProvider/cpp/resources.rc), [2](https://github.com/microsoft/Windows-classic-samples/blob/a47da3d4551b74bb8cc1f4c7447445ac594afb44/Samples/Win7Samples/security/credentialproviders/sampleallcontrolscredentialprovider/resources.rc), [3](https://github.com/microsoft/Windows-classic-samples/blob/a47da3d4551b74bb8cc1f4c7447445ac594afb44/Samples/Win7Samples/security/credentialproviders/samplewrapexistingcredentialprovider/resources.rc)), so in order to fully pass [win32-samples-rc-tests](https://github.com/squeek502/win32-samples-rc-tests/), it is necessary to allow a dangling literal at the end of a file.
 
 #### `resinator`'s behavior
 
@@ -542,7 +542,7 @@ Note: This behavior does not generally impact wide string literals, e.g. `L"Ó"`
 
 ### Non-ASCII accelerator characters
 
-The [`ACCELERATORS`](https://learn.microsoft.com/en-us/windows/win32/menurc/accelerators-resource) resource can be used to essentially define hotkeys for a program. In the message loop, the `TranslateAccelerator` function can be used to automatically turn the relevant keystrokes into `WM_COMMAND` messages with the associated `idvalue` as the parameter (meaning it can be handled like any other message coming from a menu, button, etc).
+The [`ACCELERATORS`](https://learn.microsoft.com/en-us/windows/win32/menurc/accelerators-resource) resource can be used to essentially define hotkeys for a program. In the message loop of a Win32 program, the `TranslateAccelerator` function can be used to automatically turn the relevant keystrokes into `WM_COMMAND` messages with the associated `idvalue` as the parameter (meaning it can be handled like any other message coming from a menu, button, etc).
 
 Simplified example from [Using Keyboard Accelerators](https://learn.microsoft.com/en-us/windows/win32/menurc/using-keyboard-accelerators):
 
@@ -552,7 +552,7 @@ Simplified example from [Using Keyboard Accelerators](https://learn.microsoft.co
 }
 ```
 
-This associates the key combination `Ctrl + B` with the ID `300` which can then be handled in the message loop processing code like this:
+This associates the key combination `Ctrl + B` with the ID `300` which can then be handled in Win32 message loop processing code like this:
 
 ```c
 // ...
@@ -563,7 +563,7 @@ This associates the key combination `Ctrl + B` with the ID `300` which can then 
 // ...
 ```
 
-There are also a number of ways to specify the keys for an accelerator, but the one relevant here is specifying "control characters" using a string literal with a `^` character, e.g. `"^B"`.
+There are also a number of ways to specify the keys for an accelerator, but the relevant form here is specifying "control characters" using a string literal with a `^` character, e.g. `"^B"`.
 
 <p><aside class="note">
 
@@ -1157,7 +1157,7 @@ which means the following (byteswapping) transformation occurred, even to the `�
 
 ##### Wait, what about `U+FFFF`?
 
-`U+FFFF` works the exact same way as `U+FFFE`&mdash;it, too, causes all non-ACII codepoints in the file to be byteswapped&mdash;and I have no clue as to why that would be.
+`U+FFFF` works the exact same way as `U+FFFE`&mdash;it, too, causes all non-ACII codepoints in the file to be byteswapped&mdash;and I have no clue as to why that would be since `U+FFFF` has no apparent relationship to a BOM. My only guess is an errant `>= 0xFFFE` check on a `u16` value.
 
 #### `resinator`'s behavior
 
@@ -1333,7 +1333,7 @@ Let's think about what's going on here. We compiled a resource with three bytes 
 
 The first two bytes, `66 6F`, are treated as a little-endian `u16` containing the length of the string that follows it. `66 6F` as a little-endian `u16` is 28518, so `LoadString` thinks that the string with ID `0` is 28 thousand UTF-16 code units long. All of the `??` bytes are those that happen to follow the resource data&mdash;they could in theory be anything. So, `LoadString` will erroneously attempt to read this gargantuan string into `buf`, but since we only provided a buffer of 1024, it only fills up to that size and stops.
 
-In the actual compiled binary, the bytes following `foo` happen to look like this:
+In the actual compiled binary of my test program, the bytes following `foo` happen to look like this:
 
 <pre class="hexdump"><code><span class="o1d o-clr3 infotip" title="Length of string ID 0">66 6F</span> <span class="bg-clr3 o1s o-clr3">6F 00 00 00 00 00</span>  <span class="o1d o-clr3">fo</span><span class="bg-clr3 o1s o-clr3">o.....</span>
 <span class="bg-clr3 o1s o-clr3">3C 3F 78 6D 6C 20 76 65</span>  <span class="bg-clr3 o1s o-clr3">&lt;?xml ve</span>
@@ -1376,7 +1376,7 @@ This is because, in order to load a string with ID 1, the bytes of the string wi
 
 <p><aside class="note">
 
-Note: Resources get compiled into a tree structure when linked into a PE/COFF binary, and that format is not something I'm familiar with ([yet](https://github.com/squeek502/resinator/issues/7)). My first impression, though, is that this seems like a bug in `LoadString`; if possible, it probably should be doing some bounds checking to avoid attempting to read past the end of the resource data.
+Note: Resources get compiled into a tree structure when linked into a PE/COFF binary, and that format is not something I'm familiar with ([yet](https://github.com/squeek502/resinator/issues/7)). My first impression, though, is that this crash seems like a bug in `LoadString`; if possible, it probably should be doing some bounds checking to avoid attempting to read past the end of the resource data.
 
 </aside></p>
 
@@ -1394,7 +1394,7 @@ test.rc:1:3: note: using RT_STRING directly likely results in an invalid .res fi
 <div class="bug-quirk-box">
 <span class="bug-quirk-category">miscompilation</span>
 
-### 'Extra data' in `DIALOG` resources is useless at best
+### That's odd, I thought you needed more padding
 
 In `DIALOGEX` resources, a control statement is documented to have the following syntax:
 
@@ -1409,31 +1409,117 @@ For now, we can ignore everything except the `[{ data-element-1 [, data-element-
 >
 > Control-specific data for the control. When a dialog is created, and a control in that dialog which has control-specific data is created, a pointer to that data is passed into the control's window procedure through the lParam of the WM_CREATE message for that control.
 
-After a very long time of having no idea how to retrieve this data, I finally figured it out while writing this article. As far as I know, the `WM_CREATE` event can only be received for custom controls
-
----
-
-subclassing doesn't work, bypasses WM_CREATE
-superclassing does work
-custom controls work
-
-https://learn.microsoft.com/en-us/windows/win32/winmsg/about-window-procedures?redirectedfrom=MSDN#winproc_superclassing
-
----
-
 Here's an example, where the string `"foo"` is the control data:
 
-<pre><code class="language-rc"><span style="opacity: 50%;">1 DIALOGEX 0, 0, 282, 239
-{</span>
+<pre><code class="language-rc"><span style="opacity: 50%;">1 DIALOGEX 0, 0, 282, 239 {</span>
   PUSHBUTTON <span style="opacity: 50%;">"Cancel",1,129,212,50,14</span> <span class="token_punctuation">{</span> <span class="token_string">"foo"</span> <span class="token_punctuation">}</span>
 <span style="opacity: 50%;">}</span></code>
 </pre>
 
-The Windows RC compiler will erroneously add too many padding bytes after the 'extra data' section of a DIALOG control if the data ends on an odd offset. This is a miscompilation that results in the subsequent dialog control not to be DWORD aligned, and will likely cause the dialog to be unusable (due to parse errors during dialog initialization at program runtime).
+After a very long time of having no idea how to retrieve this data from a Win32 program, I finally figured it out while writing this article. As far as I know, the `WM_CREATE` event can only be received for custom controls or by [superclassing](https://learn.microsoft.com/en-us/windows/win32/winmsg/about-window-procedures#winproc_superclassing) a predefined control.
 
-- As far as I can tell, there is no actual use-case for this extra data on controls in a templated DIALOG, as [the docs](https://learn.microsoft.com/en-us/windows/win32/menurc/common-control-parameters) say that "When a dialog is created, and a control in that dialog which has control-specific data is created, a pointer to that data is passed into the control's window procedure through the lParam of the WM_CREATE message for that control", but `WM_CREATE` is not sent for dialogs (instead only `WM_INITDIALOG` is sent after all of the controls have been created).
+<p><aside class="note">
 
-> `resinator` will avoid a miscompilation regarding padding bytes after 'extra data' in DIALOG controls, and will emit a warning when it detects that the Windows RC compiler would miscompile
+Note: I'm going to gloss over exactly what that means. See [here](https://github.com/squeek502/win32-resource-tests/tree/master/dialog) for details and a complete example.
+
+</aside></p>
+
+So, let's say in our program we register a class named `CustomControl`. We can then use it in a `DIALOGEX` resource like this:
+
+<pre><code class="language-rc"><span style="opacity: 50%;">1 DIALOGEX 0, 0, 282, 239 {</span>
+  <span class="token_keyword">CONTROL</span> <span style="opacity: 50%;">"text", 901,</span> <span class="token_string">"CustomControl"</span><span style="opacity: 50%;">, 0, 129,212,50,14</span> <span class="token_punctuation">{</span> <span class="token_string">"foo"</span> <span class="token_punctuation">}</span>
+<span style="opacity: 50%;">}</span></code>
+</pre>
+
+The control data (`"foo"`) will get compiled as <code class="hexdump"><span class="o1d o-clr3">03 00</span></code> <code class="hexdump"><span class="o1d o-clr4">66 6F 6F</span></code>, where <code class="hexdump"><span class="o1d o-clr3">03 00</span></code> is the length of the control data in bytes (3 as a little-endian `u16`) and <code class="hexdump"><span class="o1d o-clr4">66 6F 6F</span></code> are the bytes of `foo`.
+
+If we load this dialog, then our custom control's `WNDPROC` callback will receive a `WM_CREATE` event where the `LPARAM` parameter is a pointer to a `CREATESTRUCT` and `((CREATESTRUCT*)lParam)->lpCreateParams` will be a pointer to the control data (if any exists). So, in our case, the `lpCreateParams` pointer points to memory that looks the same as the bytes shown above: a `u16` length first, and the specified number of bytes following it. If we handle the event like this:
+
+```c
+// ...
+    case WM_CREATE:
+      if (lParam) {
+        CREATESTRUCT* create_params = (CREATESTRUCT*)lParam;
+        const BYTE* data = create_params->lpCreateParams;
+        if (data) {
+          WORD len = *((WORD*)data);
+          printf("control data len: %d\n", len);
+          for (WORD i = 0; i < len; i++) {
+              printf("%02X ", data[2 + i]);
+          }
+          printf("\n");
+        }
+      }
+      break;
+// ...
+```
+
+then we get this output (with some additional printing of the callback parameters):
+
+```
+CustomProc hwnd: 00000000022C0A8A msg: WM_CREATE wParam: 0000000000000000 lParam: 000000D7624FE730
+control data len: 3
+66 6F 6F
+```
+
+Nice! Now let's try to add a second `CONTROL`:
+
+<pre><code class="language-rc"><span style="opacity: 50%;">1 DIALOGEX 0, 0, 282, 239 {</span>
+  <span class="token_keyword">CONTROL</span> <span style="opacity: 50%;">"text", 901,</span> <span class="token_string">"CustomControl"</span><span style="opacity: 50%;">, 0, 129,212,50,14</span> <span class="token_punctuation">{</span> <span class="token_string">"foo"</span> <span class="token_punctuation">}</span>
+  <span class="token_keyword">CONTROL</span> <span style="opacity: 50%;">"text", 902,</span> <span class="token_string">"CustomControl"</span><span style="opacity: 50%;">, 0, 189,212,50,14</span> <span class="token_punctuation">{</span> <span class="token_string">"bar"</span> <span class="token_punctuation">}</span>
+<span style="opacity: 50%;">}</span></code>
+</pre>
+
+With this, the `CreateDialogParamW` call starts failing with:
+
+```
+Cannot find window class.
+```
+
+Why would that be? Well, it turns out that the Windows RC compiler miscompiles the padding bytes following a control if its control data has an odd number of bytes. This is similar to what's described in ["*Your fate will be determined by a comma*"](#your-fate-will-be-determined-by-a-comma), but in the opposite direction: instead of adding too few padding bytes, the Windows RC compiler in this case will add *too many*.
+
+Each control within a dialog resource is expected to be 4-byte aligned (meaning its memory starts at an offset that is a multiple of 4). So, if the bytes at end of one control looks like this, where the dotted boxes represent 4-byte boundaries:
+
+<pre class="hexdump" style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+  <code class="language-none"><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(255,0,0,.1);">....</span></span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(255,0,0,.1);">....</span></span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(255,0,0,.1);">foo</span>&nbsp;</span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;">&nbsp;&nbsp;&nbsp;&nbsp;</span></code>
+</pre>
+
+then we only need one byte of padding after `foo` to ensure the next control is 4-byte aligned:
+
+<pre class="hexdump" style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+  <code class="language-none"><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(255,0,0,.1);">....</span></span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(255,0,0,.1);">....</span></span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(255,0,0,.1);">foo</span><span style="background: rgba(0,0,255,.33);">.</span></span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(0,255,0,.1);">....</span></span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(0,255,0,.1);">....</span></span></code>
+</pre>
+
+However, the Windows RC compiler erroneously inserts two additional padding bytes in this case, meaning the control afterwards is misaligned by two bytes:
+
+<pre class="hexdump" style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+  <code class="language-none"><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(255,0,0,.1);">....</span></span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(255,0,0,.1);">....</span></span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(255,0,0,.1);">foo</span><span style="background: rgba(0,0,255,.33);">.</span></span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(0,0,255,.33);">..</span><span style="background: rgba(0,255,0,.1);">..</span></span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(0,255,0,.1);">....</span></span></code>
+</pre>
+
+This causes every field of the misaligned control to be misread, leading to a malformed dialog that can't be loaded. As mentioned, this is only the case with odd control data byte counts; if we add or remove a byte from the control data, then this miscompilation does not happen and the correct amount of padding is written. Here's what it looks like if `"foo"` is changed to `"fo"`:
+
+<pre class="hexdump" style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+  <code class="language-none"><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(255,0,0,.1);">....</span></span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(255,0,0,.1);">....</span></span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(255,0,0,.1);">fo</span><span style="background: rgba(0,0,255,.33);">..</span></span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(0,255,0,.1);">....</span></span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(0,255,0,.1);">....</span></span></code>
+</pre>
+
+<p><aside class="note">
+
+Note: This miscompilation only occurs for the padding between controls within a dialog. For the last control within a dialog, its control data can have an odd number of bytes with no ill-effects.
+
+</aside></p>
+
+This is a miscompilation that seems very easy to accidentally hit, but it has gone undetected/unfixed for so long presumably because this 'control data' syntax is *very* seldom used. For example, there's not a single usage of this feature anywhere within [Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples).
+
+#### `resinator`'s behavior
+
+`resinator` will avoid the miscompilation and will emit a warning when it detects that the Windows RC compiler would miscompile:
+
+```resinatorerror
+test.rc:3:3: warning: the padding before this control would be miscompiled by the Win32 RC compiler (it would insert 2 extra bytes of padding)
+  CONTROL "text", 902, "CustomControl", 1, 189,212,50,14,2,3 { "bar" }
+  ^~~~~~~
+test.rc:3:3: note: to avoid the potential miscompilation, consider adding one more byte to the control data of the control preceding this one
+```
 
 </div>
 
@@ -1514,7 +1600,7 @@ This is a bit bizarre, but when separated out like this it works fine. The probl
 }
 ```
 
-It value's data will get compiled into these bytes: <code class="hexdump"><span class="o1d o-clr1">66 00 6F 00 6F 00 00 00</span> <span class="o1d o-clr3">7B 00</span></code>, where <code class="hexdump"><span class="o1d o-clr1">66 00 6F 00 6F 00 00 00</span></code> is `"foo"` (as `NUL`-terminated little-endian UTF-16) and <code class="hexdump"><span class="o1d o-clr3">7B 00</span></code> is `123` (as a little-endian `u16`). This makes for a total of 10 bytes (8 for `"foo"`, 2 for `123`), but the Windows RC compiler erroneously reports the value's data length as 6 (4 for `"foo"` [counted as UTF-16 code units], and 2 for `123` [counted as bytes]).
+Its value's data will get compiled into these bytes: <code class="hexdump"><span class="o1d o-clr1">66 00 6F 00 6F 00 00 00</span> <span class="o1d o-clr3">7B 00</span></code>, where <code class="hexdump"><span class="o1d o-clr1">66 00 6F 00 6F 00 00 00</span></code> is `"foo"` (as `NUL`-terminated little-endian UTF-16) and <code class="hexdump"><span class="o1d o-clr3">7B 00</span></code> is `123` (as a little-endian `u16`). This makes for a total of 10 bytes (8 for `"foo"`, 2 for `123`), but the Windows RC compiler erroneously reports the value's data length as 6 (4 for `"foo"` [counted as UTF-16 code units], and 2 for `123` [counted as bytes]).
 
 This miscompilation has similar results as those detailed in ["*Your fate will be determined by a comma*"](#your-fate-will-be-determined-by-a-comma):
 - The full data of the value will not be read by a parser
@@ -1522,7 +1608,7 @@ This miscompilation has similar results as those detailed in ["*Your fate will b
 
 ---
 
-TODO: decide if any part of the stuff between these &lt;hr&gt;s is worth keeping
+TODO: decide if any part of the stuff between these `---` is worth keeping
 
 So, for the above example, the `"numbers"` value would be compiled into:
 
@@ -3688,7 +3774,7 @@ This is relevant, because when defining `DIALOG`/`DIALOGEX` resources, there is 
   </thead>
   <tbody>
     <tr>
-      <td><b>MENU</b> <i>menuname</i></code></td>
+      <td><b>MENU</b> <i>menuname</i></td>
       <td>Menu to be used. This value is either the name of the menu or its integer identifier.</td>
     </tr>
   </tbody>
@@ -3973,31 +4059,320 @@ The `weight` and `italic` parameters of a `FONT` statement get carried over to s
 
 </div>
 
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">undocumented, cli bug/quirk</span>
+
+### Undocumented/strange command-line options
+
+#### `/sl`: Maximum string length, with a twist
+
+From the help text of the Windows RC compiler (`rc.exe /?`):
+
+```
+/sl      Specify the resource string length limit in percentage
+```
+
+No further information is given, and the [CLI documentation](https://learn.microsoft.com/en-us/windows/win32/menurc/using-rc-the-rc-command-line-) doesn't even mention the option. It turns out that the `/sl` option expects a number between 1 and 100:
+
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; justify-content: center; flex-grow: 1; margin-top: 0;"
+rc.exe /sl foo test.rc
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; justify-content: center; margin-top: 0; white-space: pre-wrap;"
+fatal error RC1235: invalid option - string length limit percentage should be between 1 and 100 inclusive
+```
+
+</div>
+</div>
+
+What this option controls is the maximum number of characters within a string literal. For example, 4098 `a` characters within a string literal will fail with `string literal too long`:
+
+<pre><code class="language-rc">1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span> <span class="token_string">"aaaa</span><span class="token_unrepresentable" title="4090 'a' characters omitted">&lt;...&gt;</span><span class="token_string">aaaa"</span> <span class="token_punctuation">}</span></code></pre>
+
+So, what are the actual limits here? What does 100% of the maximum string literal length limit get you?
+
+- The default maximum string literal length (if `/sl` is not specified) is 4097; it will error if there are 4098 characters in a string literal.
+- If `/sl 50` is specified, the maximum string literal length becomes 4096 rather than 4097. There is no `/sl` setting that's equivalent to the default string literal length limit, since the option is limited to whole numbers.
+- If `/sl 100` is specified, the maximum length of a string literal becomes 8192.
+- If `/sl 33` is set, the maximum string literal length becomes 2703 (`8192 * 0.33 = 2,703.36`). 2704 characters will error with `string literal too long`.
+- If `/sl 15` is set, the maximum string literal length becomes 1228 (`8192 * 0.15 = 1,228.8`). 1229 characters will error with `string literal too long`.
+
+And to top it all off, `rc.exe` will crash if `/sl 100` is set and there is a string literal with exactly 8193 characters in it. If one more character is added to the string literal, it errors with 'string literal too long'.
+
+<p><aside class="note">
+
+Note: I'm using the term "character" here for lack of a more precise term. In reality, the Windows RC compiler likely uses something like UTF-16 code unit count, but not in an easily understandable way. For example, even though the default limit is 4097, if you have more than 4094 € codepoints (1 UTF-16 code unit each) or more than 2048 𐐷 codepoints (2 UTF-16 code units each) in a string literal, the Windows RC compiler will error with `string literal too long`.
+
+</aside></p>
+
+##### `resinator`'s behavior
+
+`resinator` uses codepoint count as the limiting factor and avoids the crash when `/sl 100` is set.
+
+```resinatorerror
+string-literal-8193.rc:2:2: error: string literal too long (max is currently 8192 characters)
+ "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa<...truncated...>
+ ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+```
+
+#### `/a`: The unknown
+
+`/a` seems to be a recognized option but it's unclear what it does and the option is totally undocumented (and also was not an option in the 16-bit version of the compiler from what I can tell). I was unable to find anything that it affects about the output of `rc.exe`.
+
+#### `resinator`'s behavior
+
+```resinatorerror
+<cli>: warning: option /a has no effect (it is undocumented and its function is unknown in the Win32 RC compiler)
+ ... /a ...
+     ~^
+```
+
+#### `/?c` and friends: LCX/LCE hidden options
+
+Either one of `/?c` or `/hc` will add a normally hidden 'Comments extracting switches:' section to the help menu, with `/t` and `/t`-prefixed options dealing with `.LCX` and `.LCE` files.
+
+```none
+Comments extracting switches:
+   /t           Generate .LCX output file
+   /tp:<prefix> Extract only comments starting with <prefix>
+   /tm          Do not save mnemonics into the output file
+   /tc          Do not save comments into the output file
+   /tw          Display warning if custom resources does not have LCX file
+   /te          Treat all warnings as errors
+   /ti          Save source file information for each resource
+   /ta          Extract data for all resources
+   /tn          Rename .LCE file
+```
+
+I can find no info about any of this online. A generated `.LCE` file seems to be an XML file with some info about the comments and resources in the `.rc` file(s).
+
+##### `resinator`'s behavior
+
+```resinatorerror
+<cli>: error: the /t option is unsupported
+ ... /t ...
+     ~^
+```
+
+(and similar errors for all of the other related options)
+
+#### `/p`: Okay, I'll only preprocess, but you're not going to like it
+
+The undocumented `/p` option will output the preprocessed version of the `.rc` file to `<filename>.rcpp` instead of outputting a `.res` file (i.e. it will only run the preprocessor). However, there are two slightly strange things about this option:
+
+- There doesn't appear to be any way to control the name of the `.rcpp` file (`/fo` does not affect it)
+- `rc.exe` will always exit with exit code 1 when the `/p` option is used, even on success
+
+##### `resinator`'s behavior
+
+`resinator` recognizes the `/p` option, but (1) it allows `/fo` to control the file name of the preprocessed output file, and (2) it exits with 0 on success.
+
+#### `/s`: What's HWB?
+
+The option `/s <unknown>` will insert a bunch of resources with name `HWB` into the `.res`. I can't find any info on this except a note [on this page](https://learn.microsoft.com/en-us/cpp/windows/how-to-create-a-resource-script-file?view=msvc-170) saying that `HWB` is a resource name that is reserved by Visual Studio. The option seems to need a value but the value doesn't seem to have any affect on the `.res` contents and it seems to accept any value without complaint.
+
+##### `resinator`'s behavior
+
+```resinatorerror
+<cli>: error: the /s option is unsupported
+ ... /s ...
+     ~^
+```
+
+#### `/z`: Mysterious font substitution
+
+The undocumented `/z` option almost always errors with 
+```
+fatal error RC1212: invalid option - /z argument missing substitute font name
+```
+
+To avoid this error, a value with `/` in it seems to do the trick (e.g. `rc.exe /z foo/bar test.rc`), but it's still unclear to me what (if any) purpose this option has. The title of ["*No one has thought about `FONT` resources for decades*"](#no-one-has-thought-about-font-resources-for-decades) is probably relevant here, too.
+
+##### `resinator`'s behavior
+
+```resinatorerror
+<cli>: error: the /z option is unsupported
+ ... /z ...
+     ~^
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">undocumented</span>
+
+### Various other undocumented/misdocumented things
+
+#### Predefined macros
+
+The [documentation](https://learn.microsoft.com/en-us/windows/win32/menurc/predefined-macros) only mentions `RC_INVOKED`, but `_WIN32` is also defined by default by the Windows RC compiler. For example, this successfully compiles and the `.res` contains the `RCDATA` resource.
+
+```rc
+#ifdef _WIN32
+1 RCDATA { "hello" }
+#endif
+```
+
+#### Dialog controls
+
+In the ["Edit Control Statements"](https://learn.microsoft.com/en-us/windows/win32/menurc/dialogex-resource#edit-control-statements) documentation:
+
+- `BEDIT` is listed, but is unrecognized by the Windows RC compiler and will error with `undefined keyword or key name: BEDIT` if you attempt to use it
+- `HEDIT` and `IEDIT` are listed and are recognized, but have no further documentation
+
+In the ["GROUPBOX control"](https://learn.microsoft.com/en-us/windows/win32/menurc/groupbox-control) documentation, it says:
+
+> The GROUPBOX statement, which you can use only in a DIALOGEX statement, defines the text, identifier, dimensions, and attributes of a control window.
+
+However, the "can use only in a `DIALOGEX` statement" (meaning it's not allowed in a `DIALOG` resource) is not actually true, since this compiles successfully:
+
+```rc
+1 DIALOG 0, 0, 640, 480 {
+  GROUPBOX "text", 1, 2, 3, 4, 5
+}
+```
+
+In the ["Button Control Statements"](https://learn.microsoft.com/en-us/windows/win32/menurc/dialogex-resource#button-control-statements) documentation, `USERBUTTON` is listed (and is recognized by the Windows RC compiler), but contains no further documentation.
+
+#### `HTML` can use a raw data block, too
+
+In the [`RCDATA`](https://learn.microsoft.com/en-us/windows/win32/menurc/rcdata-resource) and [User-defined resource documentation](https://learn.microsoft.com/en-us/windows/win32/menurc/user-defined-resource), it mentions that they can use raw data blocks:
+
+> The data can have any format and can be defined [...] as a series of numbers and strings (if the raw-data block is specified).
+
+The [`HTML` resource documentation](https://learn.microsoft.com/en-us/windows/win32/menurc/html-resource) does not mention raw data blocks, even though it, too, can use them:
+
+```rc
+1 HTML { "foo" }
+```
+
+#### `GRAYED` and `INACTIVE`
+
+In both the [`MENUITEM`](https://learn.microsoft.com/en-us/windows/win32/menurc/menuitem-statement#optionlist) and [`POPUP`](https://learn.microsoft.com/en-us/windows/win32/menurc/popup-resource#optionlist) documentation:
+
+<blockquote>
+<table style="width: 100%; text-align: left;">
+  <thead>
+    <tr>
+      <th>Option</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><b>GRAYED</b></td>
+      <td>[...]. This option cannot be used with the <b>INACTIVE</b> option.</td>
+    </tr>
+    <tr>
+      <td><b>INACTIVE</b></td>
+      <td>[...]. This option cannot be used with the <b>GRAYED</b> option.</td>
+    </tr>
+  </tbody>
+</table>
+</blockquote>
+
+However, there is no warning or error if they *are* used together:
+
+```rc
+1 MENU {
+  POPUP "bar", GRAYED, INACTIVE {
+    MENUITEM "foo", 1, GRAYED, INACTIVE
+  }
+}
+```
+
+It's not clear to me why the documentation says that they cannot be used together, and I haven't (yet) put in the effort to investigate if there are any practical consequences of doing so.
+
+#### Semicolon comments
+
+From the [Comments documentation](https://learn.microsoft.com/en-us/windows/win32/menurc/comments):
+
+> RC supports C-style syntax for both single-line comments and block comments. Single-line comments begin with two forward slashes (//) and run to the end of the line.
+
+What's not mentioned is that a semicolon (`;`) is treated roughly the same as `//`:
+
+```rc
+; this is treated as a comment
+1 RCDATA { "foo" } ; this is also treated as a comment
+```
+
+There is one difference, though, and that's how each is treated within a resource ID/type. As mentioned in ["*Special tokenization rules for names/IDs*"](#special-tokenization-rules-for-names-ids), resource ID/type tokens are basically only terminated by whitespace. However, `//` within an ID/type is treated as the start of a comment, so this, for example, errors:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; justify-content: center; flex-grow: 1; margin-top: 0;"
+1 RC//DATA { "foo" }
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; justify-content: center; margin-top: 0;"
+test.rc(2) : error RC2135 : file not found: RC
+```
+
+</div>
+</div>
+<p style="text-align: center; margin-top: 0;"><i class="caption">See <a href="#incomplete-resource-at-eof">"Incomplete resource at EOF"</a> for an explanation of the error</i></p>
+
+This is not the case for semicolons, though, where the following example compiles into a resource with the type `RC;DATA`:
+
+```rc
+1 RC;DATA { "foo" }
+```
+
+We can be reasonably sure that the semicolon comment is an intentional feature due to its presence in [a file within Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples/blob/7af17c73750469ed2b5732a49e5cb26cbb716094/Samples/Win7Samples/netds/winsock/ipxchat/IpxChat.Rc):
+
+```rc
+; Version stamping information:
+
+VS_VERSION_INFO VERSIONINFO
+...
+
+; String table
+
+STRINGTABLE
+...
+```
+
+but it is wholly undocumented.
+
+#### `resinator`'s behavior
+
+For all of the undocumented things detailed in this section, `resinator` attempts to match the behavior of the Windows RC compiler 1:1 (or, as closely as my current understanding of the Windows RC compiler's behavior allows).
+
+</div>
+
 TODO: brief descriptions of potential bugs/quirks
 - `text` param of dialog controls can be a number, but not a number expression
-- undocumented CLI options
-
-// BEDIT is mentioned here, but is not actually recognized by rc.exe:
-// https://learn.microsoft.com/en-us/windows/win32/menurc/dialogex-resource#edit-control-statements
-// HEDIT is undocumented outside of
-// https://learn.microsoft.com/en-us/windows/win32/menurc/dialogex-resource#edit-control-statements
-// IEDIT is undocumented outside of
-// https://learn.microsoft.com/en-us/windows/win32/menurc/dialogex-resource#edit-control-statements
-// The docs say that GROUPBOX is DIALOGEX-only, but it is not an error in DIALOG resources
-// https://learn.microsoft.com/en-us/windows/win32/menurc/groupbox-control
-// USERBUTTON is undocumented outside of
-// https://learn.microsoft.com/en-us/windows/win32/menurc/dialogex-resource#button-control-statements
-
-- `HTML` can use a raw data block even though it is undocumented
-- docs say GRAYED and INACTIVE cannot be used together, but there is no error/warning
 - L suffix in number expressions are infectious: `1L + 65537` results in a u32 with value 65538
 - FONT allows empty values for weight and charset in DIALOGEX but italic cannot be empty
 - General 'comma rules are inconsistent' type thing
-- semicolons as pseudo-comments/undocumented comment syntax (see "semicolons" test in test/parse.zig)
 
 <div>
 
 <style scoped>
+table, th, td {
+  border: 1px solid #eee;
+  border-collapse: collapse;
+}
+@media (prefers-color-scheme: dark) {
+  table, th, td {
+    border-color: #111;
+  }
+}
+th, td {
+  padding: 0.25rem 0.5rem;
+}
+
 .bug-quirk-box {
   border: 1px solid rgba(0,0,0,0.25);
   padding: 0.25em 1em;
@@ -4323,9 +4698,11 @@ pre.annotated-code .desc i::after {
   }
 }
 
+pre > code { white-space: inherit !important; }
 pre code .inblock { position:relative; display:inline-block; }
 
 .hexdump .infotip { cursor: help; }
+.hexdump .o1o { outline: 1px dotted; }
 .hexdump .o1d { outline: 1px dashed; }
 .hexdump .o2d { outline: 2px dashed; }
 .hexdump .o1s { outline: 1px solid; }
