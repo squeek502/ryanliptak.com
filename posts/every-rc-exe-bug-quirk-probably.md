@@ -1528,11 +1528,11 @@ test.rc:3:3: note: to avoid the potential miscompilation, consider adding one mo
 
 ### `CONTROL` class specified as a number
 
-A generic `CONTROL` is specified like this:
+A generic `CONTROL` within a `DIALOG`/`DIALOGEX` resource is specified like this:
 
 <pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">class<i></i></span><span class="subject"><span class="token_keyword">CONTROL</span></span></span><span class="token_punctuation">,</span> <span class="token_string">"foo"</span><span class="token_punctuation">,</span> 1<span class="token_punctuation">,</span> <span class="annotation"><span class="desc">class name<i></i></span><span class="subject"><span class="token_keyword">BUTTON</span></span></span><span class="token_punctuation">,</span> <span class="token_identifier">1</span><span class="token_punctuation">,</span> 2<span class="token_punctuation">,</span> 3<span class="token_punctuation">,</span> 4<span class="token_punctuation">,</span> 5</code></pre>
 
-The `class name` can be one of `BUTTON`, `EDIT`, `STATIC`, `LISTBOX`, `SCROLLBAR`, `COMBOBOX`. Internally, these are just predefined values that compile down to numeric integers:
+The `class name` can be a string literal (`"CustomControlClass"`) or one of `BUTTON`, `EDIT`, `STATIC`, `LISTBOX`, `SCROLLBAR`, or `COMBOBOX`. Internally, those unquoted literals are just predefined values that compile down to numeric integers:
 
 ```
 BUTTON    ──► 0x80
@@ -1543,9 +1543,19 @@ SCROLLBAR ──► 0x84
 COMBOBOX  ──► 0x85
 ```
 
-There's plenty of precedence within the Windows RC compiler that you can swap out a predefined type for its underlying integer and get the same result, and in indeed the Windows RC compiler does not complain if you try to do so:
+There's plenty of precedence within the Windows RC compiler that you can swap out a predefined type for its underlying integer and get the same result, and in indeed the Windows RC compiler does not complain if you try to do so in this case:
 
 <pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="token_keyword">CONTROL</span><span class="token_punctuation">,</span> <span class="token_string">"foo"</span><span class="token_punctuation">,</span> 1<span class="token_punctuation">,</span> <span class="annotation"><span class="desc">class name<i></i></span><span class="subject"><span class="token_identifier">0x80</span></span></span><span class="token_punctuation">,</span> <span class="token_identifier">1</span><span class="token_punctuation">,</span> 2<span class="token_punctuation">,</span> 3<span class="token_punctuation">,</span> 4<span class="token_punctuation">,</span> 5</code></pre>
+
+Before we look at what happens, though, we need to understand how values that can be either a string or a number get compiled. The `class name` parameter here is such a value:
+
+```rc
+// BUTTON is the number 0x80 internally
+CONTROL, "foo", 1, BUTTON, 1, 2, 3, 4, 5
+
+// The class name can also be a string for custom control types
+CONTROL, "foo", 1, "SomeCustomControl", 1, 2, 3, 4, 5
+```
 
 TODO: finish this (and fixup the above)
 
