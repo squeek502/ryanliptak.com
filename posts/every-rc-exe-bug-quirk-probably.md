@@ -1298,7 +1298,7 @@ The `"Hello"` and `"Goodbye"` strings will be grouped together into one resource
 
 Internally, `STRINGTABLE` resources get compiled as the integer resource type `RT_STRING`, which is 6. The ID of the resource is based on the grouping, so strings with IDs 0-15 go into a `RT_STRING` resource with ID 1, 16-31 go into a resource with ID 2, etc.
 
-The above is all well and good, but what happens if you *manually* define a resource with the `RT_STRING` type of 6? The Windows RC compiler has no qualms with that at all, and compiles it similarly to a user-defined resource:
+The above is all well and good, but what happens if you *manually* define a resource with the `RT_STRING` type of 6? The Windows RC compiler has no qualms with that at all, and compiles it similarly to a user-defined resource, so the resource's data will be 3 bytes long, containing `foo`:
 
 ```rc
 1 6 {
@@ -1306,7 +1306,7 @@ The above is all well and good, but what happens if you *manually* define a reso
 }
 ```
 
-When compiled, though, the resource type and ID are indistinguishable from a properly defined `STRINGTABLE`. This means that compiling the above resource and then trying to use `LoadString` will *succeed*, even though the resource's data does not conform at all to the intended structure of a `RT_STRING` resource:
+In the compiled resource, though, the resource type and ID are indistinguishable from a properly defined `STRINGTABLE`. This means that compiling the above resource and then trying to use `LoadString` will *succeed*, even though the resource's data does not conform at all to the intended structure of a `RT_STRING` resource:
 
 ```c
 UINT string_id = 0;
@@ -1524,7 +1524,7 @@ test.rc:3:3: note: to avoid the potential miscompilation, consider adding one mo
 </div>
 
 <div class="bug-quirk-box">
-<span class="bug-quirk-category">miscompilation</span>
+<span class="bug-quirk-category">miscompilation, utterly baffling</span>
 
 ### `CONTROL` class specified as a number
 
@@ -1547,21 +1547,76 @@ There's plenty of precedence within the Windows RC compiler that you can swap ou
 
 <pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="token_keyword">CONTROL</span><span class="token_punctuation">,</span> <span class="token_string">"foo"</span><span class="token_punctuation">,</span> 1<span class="token_punctuation">,</span> <span class="annotation"><span class="desc">class name<i></i></span><span class="subject"><span class="token_identifier">0x80</span></span></span><span class="token_punctuation">,</span> <span class="token_identifier">1</span><span class="token_punctuation">,</span> 2<span class="token_punctuation">,</span> 3<span class="token_punctuation">,</span> 4<span class="token_punctuation">,</span> 5</code></pre>
 
-Before we look at what happens, though, we need to understand how values that can be either a string or a number get compiled. The `class name` parameter here is such a value:
+Before we look at what happens, though, we need to understand how values that can be either a string or a number get compiled. For such values, if it is a string, it is always compiled as `NUL`-terminated UTF-16:
 
-```rc
-// BUTTON is the number 0x80 internally
-CONTROL, "foo", 1, BUTTON, 1, 2, 3, 4, 5
-
-// The class name can also be a string for custom control types
-CONTROL, "foo", 1, "SomeCustomControl", 1, 2, 3, 4, 5
+```
+66 00 6F 00 6F 00 00 00  f.o.o...
 ```
 
-TODO: finish this (and fixup the above)
+If such a value is a number, then it's compiled as a pair of `u16` values: `0xFFFF` and then the actual number value following that, where the `0xFFFF` acts as a indicator that the ambiguous string/number value is a number. So, if the number is `0x80`, it would get compiled into:
 
-The Windows RC compiler will incorrectly encode control classes specified as numbers, seemingly using some behavior that might be left over from the 16-bit RC compiler. As far as I can tell, it will always output an unusable dialog template if a CONTROL's class is specified as a number.
+```
+FF FF 80 00  ....
+```
 
-> `resinator` will avoid a miscompilation when a generic CONTROL has its control class specified as a number, and will emit a warning
+Getting back to this example:
+
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="token_keyword">CONTROL</span><span class="token_punctuation">,</span> <span class="token_string">"foo"</span><span class="token_punctuation">,</span> 1<span class="token_punctuation">,</span> <span class="annotation"><span class="desc">class name<i></i></span><span class="subject"><span class="token_identifier">0x80</span></span></span><span class="token_punctuation">,</span> <span class="token_identifier">1</span><span class="token_punctuation">,</span> 2<span class="token_punctuation">,</span> 3<span class="token_punctuation">,</span> 4<span class="token_punctuation">,</span> 5</code></pre>
+
+We should expect the `0x80` gets compiled into `FF FF 80 00` (and indeed this is what happens if you specify the control class name as `BUTTON`), but instead the Windows RC compiler compiles it into:
+
+```
+80 FF 00 00
+```
+
+As far as I can tell, the behavior here is to:
+
+- Truncate the value to a `u8`
+- If the truncated value is >= `0x80`, add `0xFF00` and write the result as a little-endian `u32`
+- If the truncated value is < `0x80` but not zero, write the value as a little-endian `u32`
+- If the truncated value is zero, write zero as a `u16`
+
+Some examples:
+
+```
+ 0x00 ──► 00 00
+ 0x01 ──► 01 00 00 00
+ 0x7F ──► 7F 00 00 00
+ 0x80 ──► FF 80 00 00
+ 0xFF ──► FF FF 00 00
+0x100 ──► 00 00
+0x101 ──► 01 00 00 00
+0x17F ──► 7F 00 00 00
+0x180 ──► FF 80 00 00
+0x1FF ──► FF FF 00 00
+      etc
+```
+
+I only have the faintest idea of what could be going on here. My guess is that this is some sort of half-baked leftover behavior from the 16-bit resource compiler that never got properly updated in the move to the 32-bit compiler, since in the 16-bit version of `rc.exe`, numbers were compiled as `FF <number as u8>` instead of `FF FF <number as u16>`. However, the result we see doesn't fully match what we'd expect if that were the case&mdash;instead of `FF 80`, we get `80 FF`
+
+<p><aside class="note">
+
+Note also that the `0x80` cutoff is also the cutoff for to the ASCII range, so that might also be relevant (but there's no legitimate reason for it to be).
+
+</aside></p>
+
+#### Some bizarre bonuses
+
+TODO: flesh this section out
+
+- `L"\xFFFE\x80"` and any other escape < `FFFF` gets compiled to `FE FF 80 00 00 00` (with `NUL`-terminator), but `L"\xFFFF\x80"` gets compiled to `FF FF 80 00` (no `NUL`-terminator)
+- `"BUTTON"`, `L"BUTTON"`, `"\x42UTTON"` and `L"\x42UTTON"` all get treated as `BUTTON` which gets compiled to `FF FF 80 00`
+
+#### `resinator`'s behavior
+
+`resinator` will avoid the miscompilation and will emit a warning:
+
+```resinatorerror
+test.rc:2:22: warning: the control class of this CONTROL would be miscompiled by the Win32 RC compiler
+  CONTROL, "foo", 1, 0x80, 1, 2, 3, 4, 5
+                     ^~~~
+test.rc:2:22: note: to avoid the potential miscompilation, consider specifying the control class using a string (BUTTON, EDIT, etc) instead of a number
+```
 
 </div>
 
@@ -4061,15 +4116,6 @@ test.rc:3:8: note: to avoid the potential miscompilation, only specify one menu 
 </div>
 
 <div class="bug-quirk-box">
-<span class="bug-quirk-category">parser bug/quirk</span>
-
-### FONT parameter inheritance
-
-The `weight` and `italic` parameters of a `FONT` statement get carried over to subsequent `FONT` statements attached to a `DIALOGEX` resource if the subsequent `FONT` statements don't provide those parameters, but `charset` doesn't (it will always have a default of `1` (`DEFAULT_CHARSET`) if not specified).
-
-</div>
-
-<div class="bug-quirk-box">
 <span class="bug-quirk-category">undocumented, cli bug/quirk</span>
 
 ### Undocumented/strange command-line options
@@ -4358,6 +4404,63 @@ but it is wholly undocumented.
 #### `resinator`'s behavior
 
 For all of the undocumented things detailed in this section, `resinator` attempts to match the behavior of the Windows RC compiler 1:1 (or, as closely as my current understanding of the Windows RC compiler's behavior allows).
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk</span>
+
+### FONT parameter inheritance
+
+TODO: Make this more substantial, cut it entirely, or move to honorable mentions
+
+`DIALOGEX` resources can specify a font to use using a `FONT` optional statement like so:
+
+```rc
+1 DIALOGEX 1, 2, 3, 4
+  FONT 16, "Foo"
+{
+  // ...
+}
+```
+
+The syntax of the `FONT` optional statement is:
+
+<pre class="annotated-code"><code class="language-rc" style="white-space: inherit;"><span class="token_keyword">FONT</span> <span class="annotation"><span class="desc">pointsize<i></i></span><span class="subject"><span class="token_identifier">16</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">typeface<i></i></span><span class="subject"><span class="token_string">"Foo"</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">weight<i></i></span><span class="subject"><span class="token_identifier">1</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">italic<i></i></span><span class="subject"><span class="token_identifier">2</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">charset<i></i></span><span class="subject"><span class="token_identifier">3</span></span></span></code></pre>
+
+As we saw in ["*If you're not last, you're irrelevant*"](#if-you-re-not-last-you-re-irrelevant), if there are duplicate statements of the same type, all but the last one is ignored:
+
+```rc
+1 DIALOGEX 1, 2, 3, 4
+  FONT 16, "Foo", 1, 2, 3 // Ignored
+  FONT 32, "Bar", 4, 5, 6
+{
+  // ...
+}
+```
+
+However, the `weight`, `italic`, and `charset` parameters are optional, and if you don't specify them, then their values from the previous `FONT` statement(s) *do* actually carry over, with the exception of the `charset` parameter:
+
+```rc
+1 DIALOGEX 1, 2, 3, 4
+  FONT 16, "Foo", 1, 2, 3
+  FONT 32, "Bar"
+{
+  // ...
+}
+```
+
+The above will result in a compiled `FONT` statement with a `pointsize` of `32`, typename of `"Bar"`, `weight` of `1`, `italic` of `2`, but a `charset` of `1` (the default value, corresponding to `DEFAULT_CHARSET`).
+
+#### `resinator`'s behavior
+
+`resinator` matches the Windows RC compiler behavior, but warns about the duplicate `FONT` statement:
+
+```resinatorerror
+test.rc:2:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
+  FONT 16, "Foo", 1, 2, 3
+  ^~~~~~~~~~~~~~~~~~~~~~~
+```
 
 </div>
 
