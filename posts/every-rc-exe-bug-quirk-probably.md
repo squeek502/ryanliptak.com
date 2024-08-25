@@ -1259,6 +1259,95 @@ test.rc:2:4: note: to include the tab character itself in a string, the escape s
 </div>
 
 <div class="bug-quirk-box">
+<span class="bug-quirk-category">preprocessor/parser bug/quirk</span>
+
+### Escaping in wide string literals
+
+In regular string literals, invalid escape sequences get compiled into their literal characters. For example:
+
+<pre><code class="language-rc"><span class="token_identifier">1</span> <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span>
+   <span class="token_string">"abc\k"</span>  <span class="token_function">────►</span>  <span class="token_function token_unrepresentable" title="Compiled data">abc\k</span>
+<span class="token_punctuation">}</span></code></pre>
+
+However, for reasons unknown, invalid escape characters within wide string literals disappear from the compiled result entirely:
+
+<pre><code class="language-rc"><span class="token_identifier">1</span> <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span>
+  L<span class="token_string">"abc\k"</span>  <span class="token_function">────►</span>  <span class="token_function token_unrepresentable" title="Compiled data (UTF-16)">a.b.c.</span>
+<span class="token_punctuation">}</span></code></pre>
+
+On its own, this is just an inexplicable quirk, but when combined with other quirks, it gets elevated to the level of a (potential) bug.
+
+#### In combination with tab characters
+
+As detailed in ["*The column of a tab character matters*"](#the-column-of-a-tab-character-matters), an embedded tab character gets converted to a variable number of spaces depending on which column it's at in the file. This happens during preprocesing, which means that by the time a string literal is parsed, the tab character will have been replaced with space character(s). This, in turn, means that "escaping" an embedded tab character will actually end up escaping a space character.
+
+Here's an example where the tab character (denoted by `────`) will get converted to 6 space characters:
+
+<pre><code class="language-rc"><span class="token_identifier">1</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_keyword">RCDATA</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_punctuation">{</span>
+L<span class="token_string">"\</span><span class="token_unrepresentable" title="Horizontal Tab (\t)">────</span><span class="token_string">"</span>
+<span class="token_punctuation">}</span></code></pre>
+
+And here's what that example looks like after preprocessing (note that the escape sequence now applies to a single space character).
+
+<pre><code class="language-rc hexdump"><span class="token_identifier">1</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_keyword">RCDATA</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_punctuation">{</span>
+L<span class="token_string">"</span><span class="o1d o-clr1"><span class="token_string">\</span><span class="token_unrepresentable" title="Space">·</span></span><span class="token_unrepresentable" title="Space">·</span><span class="token_unrepresentable" title="Space">·</span><span class="token_unrepresentable" title="Space">·</span><span class="token_unrepresentable" title="Space">·</span><span class="token_unrepresentable" title="Space">·</span><span class="token_string">"</span>
+<span class="token_punctuation">}</span></code></pre>
+
+With the quirk around invalid escape sequences in wide string literals, this means that the "escaped space" gets skipped over/ignored when parsing the string, meaning that the compiled data in this case will have 5 space characters instead of 6.
+
+#### In combination with codepoints represented by a surrogate pair
+
+As detailed in ["*The Windows RC compiler 'speaks' UTF-16*"](#the-windows-rc-compiler-speaks-utf-16), the output of the Windows RC preprocessor is always encoded as UTF-16. In UTF-16, codepoints >= `U+10000` are encoded as a surrogate pair (two `u16` code units). For example, the codepoint for 𐐷 (`U+10437`) is encoded in UTF-16 as <code><span class="token_unrepresentable" title="UTF-16 encoding of 𐐷 (U+10437)">&lt;0xD801&gt;&lt;0xDC37&gt;</span></code>.
+
+So, let's say we have this `.rc` file:
+
+```rc
+#pragma code_page(65001)
+1 RCDATA {
+  L"\𐐷"
+}
+```
+
+The file is encoded as UTF-8, meaning the 𐐷 is encoded as 4 bytes like so:
+
+<pre><code class="language-rc"><span class="token_preprocessor">#pragma</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_identifier">code_page</span><span class="token_punctuation">(</span><span class="token_identifier">65001</span><span class="token_punctuation">)</span><span class="token_rc_whitespace token_whitespace">
+</span><span class="token_identifier">1</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_keyword">RCDATA</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_punctuation">{</span><span class="token_rc_whitespace token_whitespace">
+  </span><span class="token_identifier">L</span><span class="token_string">"\<span class="token_unrepresentable" title="UTF-8 encoding of 𐐷 (U+10437)">&lt;0xF0&gt;&lt;0x90&gt;&lt;0x90&gt;&lt;0xB7&gt;</span>"</span><span class="token_rc_whitespace token_whitespace">
+</span><span class="token_punctuation">}</span><span class="token_rc_whitespace token_whitespace">
+</span></code></pre>
+
+When run through the Windows RC preprocessor, it parses the file successfully and outputs the correct UTF-16 encoding of the 𐐷 codepoint (remember that the Windows RC preprocessor always outputs UTF-16):
+
+```rc
+1 RCDATA {
+L"\𐐷"
+}
+```
+
+However, the Windows RC *parser* does not seem to be aware of surrogate pairs, and therefore treats the escape sequence as only pertaining to the first `u16` surrogate code unit (the "high surrogate"):
+
+<pre><code class="language-rc hexdump"><span class="token_identifier">1</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_keyword">RCDATA</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_punctuation">{</span><span class="token_rc_whitespace token_whitespace">
+</span><span class="token_identifier">L</span><span class="token_string">"</span><span class="o1d o-clr1"><span class="token_string">\</span><span class="token_unrepresentable" title="UTF-16 high surrogate encoding of 𐐷 (U+10437)">&lt;0xD801&gt;</span></span><span class="token_unrepresentable" title="UTF-16 low surrogate encoding of 𐐷 (U+10437)">&lt;0xDC37&gt;</span><span class="token_string">"</span><span class="token_rc_whitespace token_whitespace">
+</span><span class="token_punctuation">}</span><span class="token_rc_whitespace token_whitespace">
+</span></code></pre>
+
+This means that the <code><span class="token_string">&bsol;</span><span class="token_unrepresentable" title="UTF-16 high surrogate encoding of 𐐷 (U+10437)">&lt;0xD801&gt;</span></code> is treated as an invalid escape sequence and skipped, and only <code><span class="token_unrepresentable" title="UTF-16 low surrogate encoding of 𐐷 (U+10437)">&lt;0xDC37&gt;</span></code> makes it into the compiled resource data. This will essentially always end up being invalid UTF-16, since an unpaired surrogate code unit is ill-formed (the only way it wouldn't end up as ill-formed is if an intentionally unpaired high surrogate code unit was included before the escape sequence, e.g. `L"\xD801\𐐷"`).
+
+<p><aside class="note">
+
+Note: This lack of surrogate-pair-awareness is actually quite common in Windows, since much of Windows' Unicode support predates UTF-16. Here's [one resource that provides some context](http://simonsapin.github.io/wtf-8/#motivation).
+
+</aside></p>
+
+#### `resinator`'s behavior
+
+`resinator` currently attempts to match the Windows RC compiler's behavior exactly, and [emulates the interaction between the preprocessor and wide string escape sequences in its string parser](https://github.com/squeek502/resinator/blob/9a6e50b0c0859e0dee5fd1871d93329e0e1194ef/src/literals.zig#L298-L356).
+
+The reasoning for emulating the Windows RC compiler for escaped tabs/escaped surrogate pairs seems rather debuious, though, so this may change in the future.
+
+</div>
+
+<div class="bug-quirk-box">
 <span class="bug-quirk-category">miscompilation</span>
 
 ### `STRINGTABLE` semantics bypass
@@ -2827,7 +2916,7 @@ test.rc:1:10: error: evaluated filename contains a disallowed codepoint: <U+0000
 
 Typically, unary `+`, `-`, etc. operators are just that&mdash;operators; they are separate tokens that act on other tokens (number literals, variables, etc). However, in the Windows RC compiler, they are not real operators.
 
----
+#### Unary `-`
 
 The unary `-` is included as part of a number literal, not as a distinct operator. This behavior can be confirmed in a rather strange way, taking advantage of a separate quirk described in ["*Number expressions as filenames*"](#number-expressions-as-filenames). When a resource's filename is specified as a number expression, the file path it ultimately looks for is the last number literal in the expression, so for example:
 
@@ -2900,7 +2989,7 @@ test.rc(1) : error RC1013 : mismatched parentheses
 </div>
 </div>
 
----
+#### Unary `~`
 
 The unary NOT (`~`) works exactly the same as the unary `-` and has all the same quirks. For example, a `~` on its own is also a valid number literal:
 
@@ -2932,8 +3021,7 @@ And `~L` (to turn the integer into a `u32`) is valid in the same way that `-L` w
 </div>
 </div>
 
-
----
+#### Unary `+`
 
 The unary `+` is almost entirely a hallucination; it can be used in some places, but not others, without any discernible rhyme or reason.
 
@@ -4264,6 +4352,47 @@ To avoid this error, a value with `/` in it seems to do the trick (e.g. `rc.exe 
 <div class="bug-quirk-box">
 <span class="bug-quirk-category">undocumented</span>
 
+### Undocumented resource types
+
+Most predefined resource types have some level of documentation [here](https://learn.microsoft.com/en-us/windows/win32/menurc/resource-definition-statements) (or are at least listed), but there are a few that are recognized but not documented.
+
+#### `DLGINCLUDE`
+
+https://www.betaarchive.com/wiki/index.php/Microsoft_KB_Archive/91697
+
+#### `DLGINIT`
+
+https://github.com/microsoft/Windows-classic-samples/blob/main/Samples/Win7Samples/web/bits/bits_ie/bits_ie.rc
+
+#### `TOOLBAR`
+
+Syntax:
+
+```rc
+<id> TOOLBAR <button width> <button height> {
+  // [<button statement>]
+  // ...
+}
+```
+
+where `<button statement>` is one of:
+
+```rc
+BUTTON <id>
+// or
+SEPARATOR
+```
+
+This resource is used in a [few](https://github.com/microsoft/Windows-classic-samples/blob/7af17c73750469ed2b5732a49e5cb26cbb716094/Samples/Win7Samples/netds/messagequeuing/mqapitst/MqApiTst.Rc#L83-L92) [different](https://github.com/microsoft/Windows-classic-samples/blob/7af17c73750469ed2b5732a49e5cb26cbb716094/Samples/Win7Samples/com/administration/explore.vc/VCExplore.Rc#L410-L431) `.rc` files within [Windows-classic-samples](https://github.com/Microsoft/Windows-classic-samples).
+
+Seems to be used with [`CreateToolbarEx`](https://learn.microsoft.com/en-us/windows/win32/api/commctrl/nf-commctrl-createtoolbarex).
+
+</div>
+
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">undocumented</span>
+
 ### Various other undocumented/misdocumented things
 
 #### Predefined macros
@@ -4410,9 +4539,79 @@ For all of the undocumented things detailed in this section, `resinator` attempt
 <div class="bug-quirk-box">
 <span class="bug-quirk-category">parser bug/quirk</span>
 
-### FONT parameter inheritance
+### General comma-related inconsistencies
 
-TODO: Make this more substantial, cut it entirely, or move to honorable mentions
+The rules around commas within statements can be one of the following depending on the context:
+
+- Exactly one comma
+- Zero or one comma
+- Zero or any number of commas
+
+And these rules can be mixed and matched within statements. I'e tried to codify my understanding of the rules around commas in a [test `.rc` file I wrote](https://github.com/squeek502/resinator/blob/9a6e50b0c0859e0dee5fd1871d93329e0e1194ef/test/data/reference.rc). Here's an example statment that contains all 3 rules:
+
+```rc
+AUTO3STATE,, "mytext",, 900,, 1/*,*/ 2/*,*/ 3/*,*/ 4, 3 | NOT 1L, NOT 1 | 3L
+```
+<p style="margin:0; text-align: center;"><i class="caption"><code>,,</code> indicates "zero or any number of commas", <code><span class="token_comment">/*,*/</span></code> indicates "zero or one comma", and <code>,</code> indicates "exactly 1 comma"</i></p>
+
+#### Empty parameters
+
+In most places where parameters cannot have any number of commas separating them, `,,` will lead to a compile error. For example:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; justify-content: center; flex-grow: 1; margin-top: 0;"
+1 ACCELERATORS {
+  "^b",, 1
+}
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"
+test.rc(2) : error RC2107 : expected numeric command value
+```
+
+</div>
+</div>
+
+However, there are a few places where empty parameters are accepted, and therefore `,,` is not a compile error, e.g. in the `MENUITEM` of a `MENUEX` resource:
+
+```rc
+1 MENUEX {
+  // The three statements below are equivalent
+  MENUITEM "foo", 0, 0, 0,
+  MENUITEM "foo", /*id*/, /*type*/, /*state*/,
+  MENUITEM "foo",,,,
+  // The parameters are optional, so this is also equivalent
+  MENUITEM "foo"
+}
+```
+
+Adding one more comma will cause a compile error:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; justify-content: center; flex-grow: 1; margin-top: 0;"
+1 MENUEX {
+  MENUITEM "foo",,,,,
+}
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"
+test.rc(2) : error RC2235 : too many arguments supplied
+```
+
+</div>
+</div>
+
+#### Italic is singled out
 
 `DIALOGEX` resources can specify a font to use using a `FONT` optional statement like so:
 
@@ -4424,11 +4623,57 @@ TODO: Make this more substantial, cut it entirely, or move to honorable mentions
 }
 ```
 
-The syntax of the `FONT` optional statement is:
+The full syntax of the `FONT` statement in this context is:
 
 <pre class="annotated-code"><code class="language-rc" style="white-space: inherit;"><span class="token_keyword">FONT</span> <span class="annotation"><span class="desc">pointsize<i></i></span><span class="subject"><span class="token_identifier">16</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">typeface<i></i></span><span class="subject"><span class="token_string">"Foo"</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">weight<i></i></span><span class="subject"><span class="token_identifier">1</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">italic<i></i></span><span class="subject"><span class="token_identifier">2</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">charset<i></i></span><span class="subject"><span class="token_identifier">3</span></span></span></code></pre>
+<p style="margin:0; text-align: center;"><i class="caption"><code>weight</code>, <code>italic</code>, and <code>charset</code> are optional</i></p>
 
-As we saw in ["*If you're not last, you're irrelevant*"](#if-you-re-not-last-you-re-irrelevant), if there are duplicate statements of the same type, all but the last one is ignored:
+For whatever reason, while `weight` and `charset` can be empty parameters, `italic` seemingly cannot, since this fails:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; justify-content: center; flex-grow: 1; margin-top: 0;"
+1 DIALOGEX 1, 2, 3, 4
+  FONT 16, "Foo", /*weight*/, /*italic*/, /*charset*/
+{
+  // ...
+}
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"
+test.rc(2) : error RC2112 : BEGIN expected in dialog
+
+test.rc(6) : error RC2135 : file not found: }
+```
+
+</div>
+</div>
+
+but this succeeds:
+
+```rc
+1 DIALOGEX 1, 2, 3, 4
+  FONT 16, "Foo", /*weight*/, 0, /*charset*/
+{
+  // ...
+}
+```
+
+Due to the strangeness of the error, I'm assuming that this `italic`-parameter-specific-behavior is unintended.
+
+#### Further weirdness
+
+<p><aside class="note">
+  
+Note: This is not really comma-related, this is just a tangentially-related side note
+
+</aside></p>
+
+Continuing on with the `FONT` statement of `DIALOGEX` resource: as we saw in ["*If you're not last, you're irrelevant*"](#if-you-re-not-last-you-re-irrelevant), if there are duplicate statements of the same type, all but the last one is ignored:
 
 ```rc
 1 DIALOGEX 1, 2, 3, 4
@@ -4439,7 +4684,7 @@ As we saw in ["*If you're not last, you're irrelevant*"](#if-you-re-not-last-you
 }
 ```
 
-However, the `weight`, `italic`, and `charset` parameters are optional, and if you don't specify them, then their values from the previous `FONT` statement(s) *do* actually carry over, with the exception of the `charset` parameter:
+However, given that the `weight`, `italic`, and `charset` parameters are optional, if you don't specify them, then their values from the previous `FONT` statement(s) *do* actually carry over, with the exception of the `charset` parameter:
 
 ```rc
 1 DIALOGEX 1, 2, 3, 4
@@ -4450,11 +4695,25 @@ However, the `weight`, `italic`, and `charset` parameters are optional, and if y
 }
 ```
 
-The above will result in a compiled `FONT` statement with a `pointsize` of `32`, typename of `"Bar"`, `weight` of `1`, `italic` of `2`, but a `charset` of `1` (the default value, corresponding to `DEFAULT_CHARSET`).
+With the above, the `FONT` statement that ends up being compiled will effectively be:
+
+```rc
+  FONT 32, "Bar", 1, 2, 1
+```
+
+where the last `1` is the `charset` parameter's default value (`DEFAULT_CHARSET`) rather than the `3` we might expect from the duplicate `FONT` statement.
 
 #### `resinator`'s behavior
 
-`resinator` matches the Windows RC compiler behavior, but warns about the duplicate `FONT` statement:
+`resinator` matches the Windows RC compiler behavior, but has better error messages/additonal warnings where appropriate:
+
+```resinatorerror
+test.rc:2:21: error: expected number or number expression; got ','
+  FONT 16, "Foo", , ,
+                    ^
+test.rc:2:21: note: this line originated from line 2 of file 'test.rc'
+  FONT 16, "Foo", /*weight*/, /*italic*/, /*charset*/
+```
 
 ```resinatorerror
 test.rc:2:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
@@ -4467,8 +4726,6 @@ test.rc:2:3: warning: this statement was ignored; when multiple statements of th
 TODO: brief descriptions of potential bugs/quirks
 - `text` param of dialog controls can be a number, but not a number expression
 - L suffix in number expressions are infectious: `1L + 65537` results in a u32 with value 65538
-- FONT allows empty values for weight and charset in DIALOGEX but italic cannot be empty
-- General 'comma rules are inconsistent' type thing
 
 <div>
 
