@@ -1689,13 +1689,6 @@ Note also that the `0x80` cutoff is also the cutoff for to the ASCII range, so t
 
 </aside></p>
 
-#### Some bizarre bonuses
-
-TODO: flesh this section out
-
-- `L"\xFFFE\x80"` and any other escape < `FFFF` gets compiled to `FE FF 80 00 00 00` (with `NUL`-terminator), but `L"\xFFFF\x80"` gets compiled to `FF FF 80 00` (no `NUL`-terminator)
-- `"BUTTON"`, `L"BUTTON"`, `"\x42UTTON"` and `L"\x42UTTON"` all get treated as `BUTTON` which gets compiled to `FF FF 80 00`
-
 #### `resinator`'s behavior
 
 `resinator` will avoid the miscompilation and will emit a warning:
@@ -1706,6 +1699,143 @@ test.rc:2:22: warning: the control class of this CONTROL would be miscompiled by
                      ^~~~
 test.rc:2:22: note: to avoid the potential miscompilation, consider specifying the control class using a string (BUTTON, EDIT, etc) instead of a number
 ```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">compiler bug/quirk</span>
+
+### `CONTROL` class specified as a string literal
+
+I said in ["*`CONTROL` class specified as a string literal*"](#control-class-specified-as-a-string-literal) that `class name` can be specified as a particular set of unquoted identifiers (`BUTTON`, `EDIT`, `STATIC`, etc). I left out that it's also possible to specify them as quoted string literals&mdash;these are equivalent to the unquoted `BUTTON` class name:
+
+<pre><code class="language-rc"><span style="opacity:0.5">CONTROL, "foo", 1, </span><span class="token_string">"BUTTON"</span><span style="opacity:0.5">, 1, 2, 3, 4, 5</span>
+<span style="opacity:0.5">CONTROL, "foo", 1, </span>L<span class="token_string">"BUTTON"</span><span style="opacity:0.5">, 1, 2, 3, 4, 5</span></code></pre>
+
+Additionally, this equivalence is determined *after* parsing, so *these* are also equivalent, since `\x42` parses to the ASCII character `B`:
+
+<pre><code class="language-rc"><span style="opacity:0.5">CONTROL, "foo", 1, </span><span class="token_string">"\x42UTTON"</span><span style="opacity:0.5">, 1, 2, 3, 4, 5</span>
+<span style="opacity:0.5">CONTROL, "foo", 1, </span>L<span class="token_string">"\x42UTTON"</span><span style="opacity:0.5">, 1, 2, 3, 4, 5</span></code></pre>
+
+All of the above examples get treated the same as the unquoted literal `BUTTON`, which gets compiled to `FF FF 80 00` as mentioned in the previous section.
+
+#### A string masquerading as a number
+
+For class name strings that do not parse into one of the predefined classes (`BUTTON`, `EDIT`, `STATIC`, etc), the class name typically gets written as `NUL`-terminated UTF-16. For example:
+
+<div class="gets-parsed-as">
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
+
+```rc
+"abc"
+```
+
+</div>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center; align-items: center; text-align:center;">gets compiled to:</div>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
+
+```
+61 00 62 00 63 00 00 00   a.b.c...
+```
+
+</div>
+</div>
+</div>
+
+However, if you use a `L` prefixed string that starts with a `\xFFFF` escape, then the value is written as if it were a number (i.e. the value is always 32-bits long and has the format `FF FF <number as u16>`). Here's an example:
+
+<div class="gets-parsed-as">
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
+
+```rc
+L"\xFFFFzzzzzzzz"
+```
+
+</div>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center; align-items: center; text-align:center;">gets compiled to:</div>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
+
+```
+FF FF 7A 00   ..z.
+```
+
+</div>
+</div>
+</div>
+
+All but the first `z` drop out, as seemingly the first character value after the `\xFFFF` escape is written as a `u16`. Here's another example using a 4-digit hex escape after the `\xFFFF`:
+
+<div class="gets-parsed-as">
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
+
+```rc
+L"\xFFFF\xABCD"
+```
+
+</div>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center; align-items: center; text-align:center;">gets compiled to:</div>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
+
+```
+FF FF CD AB   ....
+```
+
+</div>
+</div>
+</div>
+
+<p><aside class="note">
+
+Note: Remember that numbers are compiled as [little-endian](https://en.wikipedia.org/wiki/Endianness), so the `CD AB` sequence reflects that, and is not another bug/quirk of its own.
+
+</aside></p>
+
+So, with this bug/quirk, this:
+
+<div class="gets-parsed-as">
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
+
+```rc
+L"\xFFFF\x80"
+```
+
+</div>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center; align-items: center; text-align:center;">gets compiled to:</div>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
+
+```
+FF FF 80 00   ....
+```
+
+</div>
+</div>
+</div>
+
+which is *indistinguisable* from the compiled form of the class name specified as either an unquoted literal (`BUTTON`) or quoted string (`"BUTTON"`). I want to say that this edge case is so specific that it has to have been intentional, but I'm not sure I can rule out the idea that some very strange confluence of quirks is coming together to produce this behavior unintentionally.
+
+#### `resinator`'s behavior
+
+`resinator` matches the behavior of the Windows RC compiler for the `"BUTTON"`/`"\x42UTTON"` examples, but the `L"\xFFFF..."` edge case [has not yet been decided on](https://github.com/squeek502/resinator/issues/13) as of now.
 
 </div>
 
@@ -1760,55 +1890,11 @@ This miscompilation has similar results as those detailed in ["*Your fate will b
 - The full data of the value will not be read by a parser
 - Due to the tree structure of `VERSIONINFO` resource data, this has knock-on effects on all following nodes, meaning the entire resource will be mangled
 
----
+<p><aside class="note">
 
-TODO: decide if any part of the stuff between these `---` is worth keeping
+Note: There is a [The Old New Thing post](https://devblogs.microsoft.com/oldnewthing/20061222-00/?p=28623) that mentions this bug/quirk, check it out if you want some additional details
 
-So, for the above example, the `"numbers"` value would be compiled into:
-
-<!--TODO center hexdump vertically, convert desc: value to two-column grid-->
-
-<div class="grid-max-2-col">
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<pre class="hexdump" style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"><code><span class="o1d o-clr1">1C 00</span> <span class="o1d o-clr2">04 00</span> <span class="o1d o-clr3">00 00</span> <span class="o1d o-clr4">6e 00</span>  <span class="o1d o-clr1">..</span><span class="o1d o-clr2">..</span><span class="o1d o-clr3">..</span><span class="o1d o-clr4">n.</span>
-<span class="o1d o-clr4">75 00 6D 00 62 00 65 00</span>  <span class="o1d o-clr4">u.m.b.e.</span>
-<span class="o1d o-clr4">72 00 73 00 00 00</span> <span class="o1d o-clr5">00 00</span>  <span class="o1d o-clr4">r.s...</span><span class="o1d o-clr5">..</span>
-<span class="o1d o-clr1">7B 00 C8 01</span>              <span class="o1d o-clr1">TODO</span></code></pre>
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<div class="hexdump box-border" style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; padding: 1em;">
-<div class="o1d o-clr1" style="margin-bottom: 0.5em;">Total node length (in bytes): 28</div>
-<div class="o1d o-clr2" style="margin-bottom: 0.5em;">Value length (in bytes): 4</div>
-<div class="o1d o-clr3" style="margin-bottom: 0.5em;">Value type (0=binary, 1=string): 0 (binary)</div>
-<div class="o1d o-clr4" style="margin-bottom: 0.5em;">Name: <code>numbers</code> as UTF-16, <code>NUL</code>-terminated</div>
-<div class="o1d o-clr5" style="margin-bottom: 0.5em;">Padding bytes: 2 bytes to get to 4-byte alignment</div>
-<div class="o1d o-clr1" style="margin-bottom: 0.5em;">Value data: Two little-endian <code>u16</code> integers for <code>123</code> and <code>456</code>, respectively</div>
-</div>
-</div>
-</div>
-
-```
-1c00 0400 0000 6e00  ......n.
-7500 6d00 6200 6500  u.m.b.e.
-7200 7300 0000 0000  r.s.....
-7b00 c801            
-```
-
-<pre class="annotated-code"><code class="language-none" style="white-space: inherit;"><span class="annotation"><span class="desc">total node length (in bytes)<i></i></span><span class="subject">28</span></span> <span class="annotation"><span class="desc">value length (in bytes)<i></i></span><span class="subject">4</span></span> <span class="annotation"><span class="desc">value type<i></i></span><span class="subject">&lt;binary&gt;</span></span> <span class="annotation"><span class="desc">name<i></i></span><span class="subject">&lt;"numbers" as UTF-16&gt;</span></span> <span class="annotation"><span class="desc">value data<i></i></span><span class="subject">7b00 c801</span></span></code></pre>
-
-```
-2800 0800 0100 7300 7400 7200 6900 6e00 6700 7300 0000 0000 6600 6f00 6f00 0000 6200 6100 7200 0000
-```
-
-```rc
-1 VERSIONINFO {
-  VALUE "something", "foo", 123
-}
-```
-
-The data length of a `VERSIONNODE` for strings is counted in UTF-16 code units instead of bytes. This can get especially weird if numbers and strings are intermixed within a `VERSIONNODE`'s data, e.g. `VALUE "key", 1, 2, "ab"` will end up reporting a data length of 7 (2 for each number, 1 for each UTF-16 character, and 1 for the null-terminator of the "ab" string), but the real (as written to the `.res`) length of the data in bytes is 10 (2 for each number, 2 for each UTF-16 character, and 2 for the null-terminator of the "ab" string). This is detailed in [this The Old New Thing post](https://devblogs.microsoft.com/oldnewthing/20061222-00/?p=28623).
-
----
+</aside></p>
 
 #### The return of the meaningful comma
 
@@ -3734,11 +3820,19 @@ In this example, the button defined in the `DIALOGEX` would start with the text 
 
 ### All operators have equal precedence
 
-TODO
+In the Windows RC compiler, all operators have equal precedence, which is not the case in C. This means that there is a mismatch between the precedence used by the preprocessor (C/C++ operator precedence) and the precedence used by the compiler.
 
-https://devblogs.microsoft.com/oldnewthing/20230313-00/?p=107928
+Instead of detailing this bug/quirk, though, I'm just going to link to Raymond Chen's excellent description (complete with the potential consequences):
+
+<div class="box-bg box-border" style="padding: 0.5rem 1.5rem;">
+
+[What is the expression language used by the Resource Compiler for non-preprocessor expressions? - The Old New Thing](https://devblogs.microsoft.com/oldnewthing/20230313-00/?p=107928)
+
+</div>
 
 #### `resinator`'s behavior
+
+`resinator` matches the behavior of the Windows RC compiler with regards to operator precedence (i.e. it also contains an operator-precedence-mismatch between the preprocessor and the compiler)
 
 </div>
 
@@ -4358,34 +4452,138 @@ Most predefined resource types have some level of documentation [here](https://l
 
 #### `DLGINCLUDE`
 
-https://www.betaarchive.com/wiki/index.php/Microsoft_KB_Archive/91697
+The tiny bit of available documentation I could find for `DLGINCLUDE` comes from [Microsoft KB Archive/91697](https://www.betaarchive.com/wiki/index.php/Microsoft_KB_Archive/91697):
+
+> The dialog editor needs a way to know what include file is associated with a resource file that it opens. Rather than prompt the user for the name of the include file, the name of the include file is embedded in the resource file in most cases. 
+
+Here's an example from [`sdkdiff.rc` in Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples/blob/be3df303c13bcf5526250a2e1659e8add8d2e35d/Samples/Win7Samples/begin/sdkdiff/sdkdiff.rc#L281):
+
+```
+1 DLGINCLUDE "wdiffrc.h"
+```
+
+Further details from [Microsoft KB Archive/91697](https://www.betaarchive.com/wiki/index.php/Microsoft_KB_Archive/91697):
+
+> In the Win32 SDK, changes were made so that this resource has its own resource type; it was changed from an RCDATA-type resource with the special name, DLGINCLUDE, to a DLGINCLUDE resource type whose name can be specified.
+
+So, in the 16-bit Windows RC compiler, a DLGINCLUDE would have looked something like this:
+
+```rc
+DLGINCLUDE RCDATA DISCARDABLE
+BEGIN
+    "GUTILSRC.H\0"
+END
+```
+
+<p><aside class="note">
+
+Note: Coincidentally, this second example of the deprecated syntax comes from the [exact same `.rc` file as the first example](https://github.com/microsoft/Windows-classic-samples/blob/be3df303c13bcf5526250a2e1659e8add8d2e35d/Samples/Win7Samples/begin/sdkdiff/sdkdiff.rc#L417-L420).
+
+</aside></p>
+
+`DLGINCLUDE` resources get compiled into the `.res`, but subsequently get ignored by `cvtres.exe` (the tool that turns the `.res` into a COFF object file) and therefore do not make it into the final linked binary. So, in practical terms, `DLGINCLUDE` is entirely meaningless outside of the Visual Studio dialog editor GUI as far as I know.
 
 #### `DLGINIT`
 
-https://github.com/microsoft/Windows-classic-samples/blob/main/Samples/Win7Samples/web/bits/bits_ie/bits_ie.rc
+The purpose of this resource seems like it could be similar to `controlData` in `DIALOGEX` resources (as detailed in ["*That's odd, I thought you needed more padding*"](#that-s-odd-i-thought-you-needed-more-padding))&mdash;that is, it is used to specify control-specific data that is loaded/utilized when initializing a particular control within a dialog.
+
+Here's and example from [`bits_ie.rc` of Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples/blob/main/Samples/Win7Samples/web/bits/bits_ie/bits_ie.rc):
+
+```rc
+IDD_DIALOG DLGINIT
+BEGIN
+    IDC_PRIORITY, 0x403, 11, 0
+0x6f46, 0x6572, 0x7267, 0x756f, 0x646e, "\000" 
+    IDC_PRIORITY, 0x403, 5, 0
+0x6948, 0x6867, "\000" 
+    IDC_PRIORITY, 0x403, 7, 0
+0x6f4e, 0x6d72, 0x6c61, "\000" 
+    IDC_PRIORITY, 0x403, 4, 0
+0x6f4c, 0x0077, 
+    0
+END
+```
+
+The resource itself is compiled the same way an `RCDATA` or User-defined resource would be when using a raw data block, so each number is compiled as a 16-bit little-endian integer. The expected structure of the data seems to be dependent on the type of control it's for (in this case, `IDC_PRIORITY` is the ID for a `COMBOBOX` control). In the above example, the format seems to be something like:
+
+```rc
+    <control id>, <language id>, <data length in bytes>, <unknown>
+<data ...>
+```
+
+The particular format is not very relevant, though, as it is (1) also entirely undocumented, and (2) generated by the Visual Studio dialog editor.
+
+It is worth noting, though, that the `<data ...>` parts of the above example, when written as little-endian `u16` integers, correspond to the bytes for the ASCII string `Foreground`, `High`, `Normal`, and `Low`. These strings can also be seen in the Properties window of the dialog editor in Visual Studio (and the dialog editor is almost certainly how the `DLGINIT` was generated in the first place):
+
+<div style="text-align: center;">
+<img style="margin-left:auto; margin-right:auto; display: block;" src="/images/every-rc-exe-bug-quirk-probably/dlginit-properties-window.png">
+<p style="margin-top: .5em;"><i class="caption">The <code>Data</code> section of Combo-box Controls in Visual Studio corresponds to the <code>DLGINIT</code> data</i></p>
+</div>
+
+While it would make sense for these strings to be used to populate the initial options in the combo box, I couldn't actually get modifications to the `DLGINIT` to affect anything in the compiled program in my testing. I'm guessing that's due to a mistake on my part, though; my knowledge of the Visual Studio GUI side of `.rc` files is essentially zero.
 
 #### `TOOLBAR`
 
-Syntax:
+The undocumented `TOOLBAR` resource seems to be used in combination with [`CreateToolbarEx`](https://learn.microsoft.com/en-us/windows/win32/api/commctrl/nf-commctrl-createtoolbarex) to create a toolbar of buttons from a bitmap. Here's the syntax:
 
 ```rc
 <id> TOOLBAR <button width> <button height> {
-  // [<button statement>]
-  // ...
+  // Any number of
+  BUTTON <id>
+  // or
+  SEPARATOR
+  // statements
 }
 ```
 
-where `<button statement>` is one of:
+This resource is used in a few different `.rc` files within [Windows-classic-samples](https://github.com/Microsoft/Windows-classic-samples). Here's one example from [`VCExplore.Rc`](https://github.com/microsoft/Windows-classic-samples/blob/7af17c73750469ed2b5732a49e5cb26cbb716094/Samples/Win7Samples/com/administration/explore.vc/VCExplore.Rc#L410-L431):
 
 ```rc
-BUTTON <id>
-// or
-SEPARATOR
+IDR_TOOLBAR_MAIN TOOLBAR DISCARDABLE  16, 15
+BEGIN
+    BUTTON      ID_TBTN_CONNECT
+    SEPARATOR
+    BUTTON      ID_TBTN_REFRESH
+    SEPARATOR
+    BUTTON      ID_TBTN_NEW
+    BUTTON      ID_TBTN_SAVE
+    BUTTON      ID_TBTN_DELETE
+    SEPARATOR
+    BUTTON      ID_TBTN_START_APP
+    BUTTON      ID_TBTN_STOP_APP
+    BUTTON      ID_TBTN_INSTALL_APP
+    BUTTON      ID_TBTN_EXPORT_APP
+    SEPARATOR
+    BUTTON      ID_TBTN_INSTALL_COMPONENT
+    BUTTON      ID_TBTN_IMPORT_COMPONENT
+    SEPARATOR
+    BUTTON      ID_TBTN_UTILITY
+    SEPARATOR
+    BUTTON      ID_TBTN_ABOUT
+END
 ```
 
-This resource is used in a [few](https://github.com/microsoft/Windows-classic-samples/blob/7af17c73750469ed2b5732a49e5cb26cbb716094/Samples/Win7Samples/netds/messagequeuing/mqapitst/MqApiTst.Rc#L83-L92) [different](https://github.com/microsoft/Windows-classic-samples/blob/7af17c73750469ed2b5732a49e5cb26cbb716094/Samples/Win7Samples/com/administration/explore.vc/VCExplore.Rc#L410-L431) `.rc` files within [Windows-classic-samples](https://github.com/Microsoft/Windows-classic-samples).
+Additionally, a `BITMAP` resource is defined with the same ID as the toolbar:
 
-Seems to be used with [`CreateToolbarEx`](https://learn.microsoft.com/en-us/windows/win32/api/commctrl/nf-commctrl-createtoolbarex).
+```rc
+IDR_TOOLBAR_MAIN        BITMAP  DISCARDABLE     "res\\toolbar1.bmp"
+```
+
+<div style="text-align: center; padding: 1rem; margin-bottom: 1rem;" class="box-bg box-border">
+<img style="margin-left:auto; margin-right:auto; display: block; margin-top: 0.5rem;" src="/images/every-rc-exe-bug-quirk-probably/toolbar1.png">
+<p style="margin-top: .5em; margin-bottom: 0;"><i class="caption">The example toolbar bitmap, each icon is 16x15</i></p>
+</div>
+
+With the `TOOLBAR` and `BITMAP` resources together, and with a `CreateToolbarEx` call as mentioned above, we get a functional toolbar that looks like this:
+
+<div style="text-align: center;">
+<img style="margin-left:auto; margin-right:auto; display: block;" src="/images/every-rc-exe-bug-quirk-probably/toolbar-gui.png">
+<p style="margin-top: .5em;"><i class="caption">The toolbar as displayed in the GUI; note the gaps between some of the buttons which were defined in the <code>.rc</code> file</i></p>
+</div>
+
+#### `resinator`'s behavior
+
+`resinator` supports these undocumented resource types, and attempts to match the behavior of the Windows RC compiler exactly.
 
 </div>
 
