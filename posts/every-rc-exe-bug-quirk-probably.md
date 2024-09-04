@@ -4745,7 +4745,7 @@ The rules around commas within statements can be one of the following depending 
 - Zero or one comma
 - Zero or any number of commas
 
-And these rules can be mixed and matched within statements. I'e tried to codify my understanding of the rules around commas in a [test `.rc` file I wrote](https://github.com/squeek502/resinator/blob/9a6e50b0c0859e0dee5fd1871d93329e0e1194ef/test/data/reference.rc). Here's an example statment that contains all 3 rules:
+And these rules can be mixed and matched within statements. I've tried to codify my understanding of the rules around commas in a [test `.rc` file I wrote](https://github.com/squeek502/resinator/blob/9a6e50b0c0859e0dee5fd1871d93329e0e1194ef/test/data/reference.rc). Here's an example statement that contains all 3 rules:
 
 ```rc
 AUTO3STATE,, "mytext",, 900,, 1/*,*/ 2/*,*/ 3/*,*/ 4, 3 | NOT 1L, NOT 1 | 3L
@@ -4880,6 +4880,12 @@ Continuing on with the `FONT` statement of `DIALOGEX` resource: as we saw in ["*
 {
   // ...
 }
+```
+
+In the above example, the values-as-compiled will all come from this `FONT` statement:
+
+```rc
+  FONT 32, "Bar", 4, 5, 6
 ```
 
 However, given that the `weight`, `italic`, and `charset` parameters are optional, if you don't specify them, then their values from the previous `FONT` statement(s) *do* actually carry over, with the exception of the `charset` parameter:
