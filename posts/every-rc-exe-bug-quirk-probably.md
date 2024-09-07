@@ -8,7 +8,7 @@ With a goal of byte-for-byte-identical-outputs (and possible bug-for-bug compati
 
 This process led to a few things:
 
-- A completely clean-room implementation of a Windows resource compiler (not even any decompilation involved in the process)
+- A completely clean-room implementation of a Windows resource compiler (not even any decompilation of `rc.exe` involved in the process)
 - A high degree of compatibility with the `rc.exe` implementation, including [byte-for-byte identical outputs](https://github.com/squeek502/win32-samples-rc-tests/) for a sizable corpus of Microsoft-provided sample `.rc` files (~500 files)
 - A large list of strange/interesting/baffling behaviors of the Windows resource compiler
 
