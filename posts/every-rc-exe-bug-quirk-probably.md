@@ -87,7 +87,7 @@ With that out of the way, we're ready to get into it.
 
 ### Special tokenization rules for names/IDs
 
-Here's a resource definition with a user-defined type (i.e. not one of the [predefined resource types](https://learn.microsoft.com/en-us/windows/win32/menurc/resource-definition-statements#resources)) of `FOO`:
+Here's a resource definition with a user-defined type of `FOO` ("user-defined" means that it's not one of the [predefined resource types](https://learn.microsoft.com/en-us/windows/win32/menurc/resource-definition-statements#resources)):
 
 ```rc
 1 FOO { "bar" }
@@ -365,7 +365,7 @@ Strangely, `rc.exe` in this case will treat `FOO` as both the type of the resour
 
 #### `resinator`'s behavior
 
-`resinator` does not match the `rc.exe` behavior and instead errors on this type of incomplete resource definition at the end of a file:
+`resinator` does not match the `rc.exe` behavior and instead always errors on this type of incomplete resource definition at the end of a file:
 
 ```resinatorerror
 test.rc:5:6: error: expected quoted string literal or unquoted literal; got '<eof>'
@@ -415,778 +415,1578 @@ FOO
 </div>
 
 <div class="bug-quirk-box">
-<span class="bug-quirk-category">fundamental concept</span>
+<span class="bug-quirk-category">parser bug/quirk, miscompilation</span>
 
-### The Windows RC compiler 'speaks' UTF-16
+### Yes, that `MENU` over there (vague gesturing)
 
-`.rc` files are compiled in two distinct steps:
+As established in the intro, resource definitions typically have an `id`, like so:
 
-1. First, they are run through a C/C++ preprocessor (`rc.exe` has a preprocessor implementation built-in)
-2. The result of the preprocessing step is then compiled into a `.res` file
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">id<i></i></span><span class="subject">1</span></span> <span class="token_identifier">FOO</span> <span class="token_punctuation">{</span> <span class="token_string">"bar"</span> <span class="token_punctuation">}</span></code></pre>
 
-In addition to [a subset of the normal C/C++ preprocessor directives](https://learn.microsoft.com/en-us/windows/win32/menurc/preprocessor-directives), there is one resource-compiler-specific [`#pragma code_page` directive](https://learn.microsoft.com/en-us/windows/win32/menurc/pragma-directives) that allows changing which code page is active mid-file. This means that `.rc` files can *have a mixture of encodings* within a single file:
+The `id` can be either a number ("ordinal") or a string ("name"), and the type of the `id` is inferred by its contents. This mostly works as you'd expect:
 
-```rc
-#pragma code_page(1252) // 1252 = Windows-1252
-1 RCDATA { "This is interpreted as Windows-1252: €" }
+- If the `id` is all digits, then it's a number/ordinal
+- If the `id` is all letters, then it's a string/name
+- If the `id` is a mix of digits and letters, then it's a string/name
 
-#pragma code_page(65001) // 65001 = UTF-8
-2 RCDATA { "This is interpreted as UTF-8: €" }
+Here's a few examples:
+
+<pre><code class="language-none"> 123    ───►  Ordinal: <span class="token_number">123</span>
+ ABC    ───►  Name: <span class="token_string">ABC</span>
+123ABC  ───►  Name: <span class="token_string">123ABC</span></code></pre>
+
+This is relevant, because when defining `DIALOG`/`DIALOGEX` resources, there is an optional `MENU` statement that can specify the `id` of a separately defined `MENU`/`MENUEX` resource to use. From [the `DIALOGEX` docs](https://learn.microsoft.com/en-us/windows/win32/menurc/dialogex-resource):
+
+<blockquote>
+<table style="width: 100%; text-align: left;">
+  <thead>
+    <tr>
+      <th>Statement</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><b>MENU</b> <i>menuname</i></td>
+      <td>Menu to be used. This value is either the name of the menu or its integer identifier.</td>
+    </tr>
+  </tbody>
+</table>
+</blockquote>
+
+Here's an example of that in action, where the `DIALOGEX` is attempting to specify that the `MENUEX` with the `id` of `1ABC` should be used:
+
+<pre><code class="language-c" style="display:block;"><span class="token_identifier" style="outline: 2px dotted orange;">1ABC</span> <span class="token_keyword">MENUEX</span>  <span class="token_function">◄╍╍╍╍╍╍╍╍╍╍╍╍╍╍┓</span>
+<span style="opacity: 50%;">{</span>                           <span class="token_function">┇</span>
+<span style="opacity: 50%;">  // ...</span>                    <span class="token_function">┇</span>
+<span style="opacity: 50%;">}</span>                           <span class="token_function">┇</span>
+                            <span class="token_function">┇</span>
+<span style="opacity: 50%;">1 DIALOGEX 0, 0, 640, 480</span>   <span class="token_function">┇</span>
+  <span class="token_keyword">MENU</span> <span class="token_identifier" style="outline: 2px dotted orange;">1ABC</span>  <span class="token_function">╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍┛</span>
+<span style="opacity: 50%;">{
+  // ...
+}</span></code></pre>
+
+However, this is not what actually occurs, as for some reason, the `MENU` statement has different rules around inferring the type of the `id`&mdash;for the `MENU` statement, whenever the first character is a number, then the whole `id` is interpreted as a number no matter what.
+
+The value of this "number" is determined using the same bogus methodology detailed in ["*Non-ASCII digits in number literals*"](#non-ascii-digits-in-number-literals), so in the case of `1ABC`, the value works out to 2899:
+
+<div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(3, 1fr);">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+1ABC
 ```
 
-If the above example file is saved as [Windows-1252](https://en.wikipedia.org/wiki/Windows-1252), each `€` is encoded as the byte `0x80`, meaning:
-- The `€` (`0x80`) in the `RCDATA` with ID `1` will be interpreted as a `€`
-- The `€` (`0x80`) in the `RCDATA` with ID `2` will attempt to be interpreted as UTF-8, but `0x80` is an invalid start byte for a UTF-8 sequence, so it will be replaced during preprocessing with the Unicode replacement character (� or `U+FFFD`)
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-So, if we run the Windows-1252-encoded file through only the `rc.exe` preprocessor (using the undocumented `rc.exe /p` option), the result is a file with the following contents:
-
-```rc
-#pragma code_page 1252
-1 RCDATA { "This is interpreted as Windows-1252: €" }
-
-#pragma code_page 65001
-2 RCDATA { "This is interpreted as UTF-8: �" }
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+'1' - '0' = 1
+'A' - '0' = 17
+'B' - '0' = 18
+'C' - '0' = 19
 ```
 
-<p><aside class="note">
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-Note: In reality, the preprocessor also adds `#line` directives, but those have been omitted for clarity.
-
-</aside></p>
-
-If, instead, the example file is saved as [UTF-8](https://en.wikipedia.org/wiki/UTF-8), each `€` is encoded as the byte sequence `0xE2 0x82 0xAC`, meaning:
-- The `€` (`0xE2 0x82 0xAC`) in the `RCDATA` with ID `1` will be interpreted as `â‚¬`
-- The `€` (`0xE2 0x82 0xAC`) in the `RCDATA` with ID `2` will be interpreted as `€`
-
-So, if we run the UTF-8-encoded version through the `rc.exe` preprocessor, the result looks like this:
-
-```rc
-#pragma code_page 1252
-1 RCDATA { "This is interpreted as Windows-1252: â‚¬" }
-
-#pragma code_page 65001
-2 RCDATA { "This is interpreted as UTF-8: €" }
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+ 1 * 1000 = 1000
+ 17 * 100 = 1700
+  18 * 10 =  180
+   19 * 1 =   19
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+            2899
 ```
 
-In both of these examples, the result of the `rc.exe` preprocessor is encoded as UTF-16. This is because, in the Windows RC compiler, the relevant code page interpretation is done during preprocessing, and the output of the preprocessor is *always* UTF-16. This, in turn, means that the parser/compiler of the Windows RC compiler *always* ingests UTF-16, as there's no option to skip the preprocessing step.
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">"numeric" id</i></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">numeric value of each "digit"</i></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">numeric value of the id</i></div>
+</div>
 
-This will be relevant for future bugs/quirks, so just file this knowledge away for now.
+Unlike ["*Non-ASCII digits in number literals*"](#non-ascii-digits-in-number-literals), though, it's now also possible to include characters in a "number" literal that have a *lower* ASCII value than the `'0'` character, meaning that attempting to get the numeric value for such a 'digit' will induce wrapping `u16` overflow:
+
+<div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(3, 1fr);">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+1!
+```
+
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+<pre style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"><code class="language-c"><span class="token_string">'1'</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_operator">-</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_string">'0'</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_operator">=</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_number">1</span><span class="token_ansi_c_whitespace token_whitespace">
+</span><span class="token_string">'!'</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_operator">-</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_string">'0'</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_operator">=</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_warning">-15</span><span class="token_ansi_c_whitespace token_whitespace">
+      </span><span class="token_warning">-15</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_operator">=</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_number">65521</span><span class="token_ansi_c_whitespace token_whitespace">
+</span></code></pre>
+
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+    1 * 10 =    10
+ 65521 * 1 = 65521
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+             65531
+```
+
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">"numeric" id</i></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">numeric value of each "digit"</i></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">numeric value of the id</i></div>
+</div>
+
+#### This is always a miscompilation
+
+In the following example using the same `1ABC` ID as above:
+
+```rc
+// In foo.rc
+1ABC MENU
+BEGIN
+  POPUP "Menu from .rc"
+  BEGIN
+    MENUITEM "Open File", 1
+  END
+END
+
+1 DIALOGEX 0, 0, 275, 280
+  CAPTION "Dialog from .rc"
+  MENU 1ABC
+BEGIN
+END
+```
+
+```c
+// In main.c
+// ...
+    HWND result = CreateDialogParamW(g_hInst, MAKEINTRESOURCE(1), hwnd, DialogProc, (LPARAM)NULL);
+// ...
+```
+
+This `CreateDialogParamW` call will fail with `The specified resource name cannot be found in the image file` because, when loading the dialog, it will attempt to look for a menu resource with an integer ID of `2899`.
+
+If we add such a `MENU` to the `.rc` file:
+
+```rc
+2899 MENU
+BEGIN
+  POPUP "Wrong menu from .rc"
+  BEGIN
+    MENUITEM "Destroy File", 1
+  END
+END
+```
+
+then the dialog will successfully load with this new menu, but it's pretty obvious this is *not* what was intended:
+
+<div style="text-align: center;">
+<img style="margin-left:auto; margin-right:auto; display: block;" src="/images/every-rc-exe-bug-quirk-probably/rc-wrong-menu.png">
+<i class="caption">The misinterpretation of the ID can (at best) lead to an unexpected menu being loaded</i>
+</div>
+
+#### A related, but inconsequential, inconsistency
+
+As mentioned in ["*Special tokenization rules for names/IDs*"](#special-tokenization-rules-for-names-ids), when the `id` of a resource is a string/name, it is uppercased before being written to the `.res` file. This uppercasing is *not* done for the `MENU` statement of a `DIALOG`/`DIALOGEX` resource, so in this example:
+
+<pre><code class="language-c" style="display:block;"><span class="token_identifier">abc</span> <span class="token_keyword">MENUEX</span>
+<span style="opacity: 50%;">{</span>
+<span style="opacity: 50%;">  // ...</span>
+<span style="opacity: 50%;">}</span>
+
+<span style="opacity: 50%;">1 DIALOGEX 0, 0, 640, 480</span>
+  <span class="token_keyword">MENU</span> <span class="token_identifier">abc</span>
+<span style="opacity: 50%;">{
+  // ...
+}</span></code></pre>
+
+The `id` of the `MENUEX` resource would be compiled as `ABC`, but the `DIALOGEX` would write the `id` of its menu as `abc`. This ends up not mattering, though, because it appears that `LoadMenu` uses a case-insensitive lookup.
+
+#### `resinator`'s behavior
+
+`resinator` avoids the miscompilation and treats the `id` parameter of `MENU` statements in `DIALOG`/`DIALOGEX` resources exactly the same as the `id` of `MENU` resources.
+
+```resinatorerror
+test.rc:3:8: warning: the id of this menu would be miscompiled by the Win32 RC compiler
+  MENU 1ABC
+       ^~~~
+test.rc:3:8: note: the Win32 RC compiler would evaluate the id as the ordinal/number value 2899
+
+test.rc:3:8: note: to avoid the potential miscompilation, the first character of the id should not be a digit
+```
 
 </div>
 
 <div class="bug-quirk-box">
-<span class="bug-quirk-category">fundamental concept</span>
+<span class="bug-quirk-category">parser bug/quirk</span>
 
-### The entirely undocumented concept of the 'output' code page
+### If you're not last, you're irrelevant
 
-As mentioned in [*The Windows RC compiler 'speaks' UTF-16*](#the-windows-rc-compiler-speaks-utf-16), there are `#pragma code_page` preprocessor directives that can modify how each line of the input `.rc` file is interpreted. Additionally, the default code page for a file can also be set via the CLI `/c` option, e.g. `/c65001` to set the default code page to UTF-8.
-
-What was not mentioned, however, is that the code page affects both how the input is interpreted *and* how the output is encoded. Take the following example:
+Many resource types have optional statements that can be specified between the resource type and the beginning of its body, e.g.
 
 ```rc
-1 RCDATA { "Ó" }
+1 ACCELERATORS
+  LANGUAGE 0x09, 0x01
+  CHARACTERISTICS 0x1234
+  VERSION 1
+{
+  // ...
+}
 ```
 
-<p><aside class="note">
-
-Note: `Ó` is encoded in [Windows-1252](https://en.wikipedia.org/wiki/Windows-1252) as the byte `0xD3`
-
-</aside></p>
-
-When saved as Windows-1252 (the default code page for the Windows RC compiler), the `0xD3` byte in the string will be interpreted as `Ó` and written to the `.res` as its Windows-1252 representation (`0xD3`).
-
-If the same Windows-1252-encoded file is compiled with the default code page set to UTF-8 (`rc.exe /c65001`), then the `0xD3` byte in the `.rc` file will be an invalid UTF-8 byte sequence and get replaced with � during preprocessing, and because the code page is UTF-8, the *output* in the `.res` file will also be encoded as UTF-8, so the bytes `0xEF 0xBF 0xBD` (the UTF-8 sequence for �) will be written.
-
-This is all pretty reasonable, but things start to get truly bizarre when you add `#pragma code_page` into the mix:
+Specifying multiple statements of the same type within a single resource definition is allowed, and the last occurrence of each statement type is the one that takes precedence, so the following would compile to the exact same `.res` as the example above:
 
 ```rc
-#pragma code_page(1252)
-1 RCDATA { "Ó" }
+1 ACCELERATORS
+  CHARACTERISTICS 1
+  LANGUAGE 0xFF, 0xFF
+  LANGUAGE 0x09, 0x01
+  CHARACTERISTICS 999
+  CHARACTERISTICS 0x1234
+  VERSION 999
+  VERSION 1
+{
+  // ...
+}
 ```
 
-When saved as Windows-1252 and compiled with Windows-1252 as the default code page, this will work the same as described above. However, if we compile the same Windows-1252-encoded `.rc` file with the default code page set to UTF-8 (`rc.exe /c65001`), we see something rather strange:
+This is not necessarily a problem on its own (although I think it should at least be a warning), but it can inadvertently lead to some bizarre behavior, as we'll see in the next bug/quirk.
 
-- The input `0xD3` byte is interpreted as `Ó`, as expected since the `#pragma code_page` changed the code page to 1252
-- The output in the `.res` is `0xC3 0x93`, the UTF-8 sequence for `Ó` (instead of the expected `0xD3` which is the Windows-1252 encoding of `Ó`)
 
-That is, the `#pragma code_page` changed the *input* code page, but there is a distinct *output* code page that can be out-of-sync with the input code page. In this instance, the input code page for the `1 RCDATA ...` line is Windows-1252, but the output code page is still the default set from the CLI option (in this case, UTF-8).
+#### `resinator`'s behavior
 
-Even more bizarre, this disjointedness can only occur via the first `#pragma code_page` directive of the file:
+`resinator` matches the Windows RC compiler behavior, but emits a warning for each ignored statement:
 
-```rc
-#pragma code_page(65001) // which code page this is doesn't matter, it can be anything valid
-#pragma code_page(1252)
-1 RCDATA { "Ó" }
+```resinatorerror
+test.rc:2:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
+  CHARACTERISTICS 1
+  ^~~~~~~~~~~~~~~~~
+test.rc:3:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
+  LANGUAGE 0xFF, 0xFF
+  ^~~~~~~~~~~~~~~~~~~
+test.rc:5:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
+  CHARACTERISTICS 999
+  ^~~~~~~~~~~~~~~~~~~
+test.rc:7:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
+  VERSION 999
+  ^~~~~~~~~~~
 ```
-
-With this, still saved as Windows-1252, the code page from the CLI option no longer matters&mdash;even when compiled with `/c65001`, the `0xD3` in the file is both interpreted as Windows-1252 (`Ó`) *and* outputted as Windows-1252 (`0xD3`).
-
-In other words, this is how things seem to work:
-
-- The CLI `/c` option sets both the input and output code pages
-- The first `#pragma code_page` in the file *only* sets the input code page, and does not modify the output code page
-- Any other `#pragma code_page` directives set *both* the input and output code pages
-
-This behavior is baffling and I've not seen it mentioned anywhere on the internet at any point in time. Even the concept of the code page affecting the encoding of the output is fully undocumented as far as I can tell.
-
-<p><aside class="note">
-
-Note: This behavior does not generally impact wide string literals, e.g. `L"Ó"` is affected by the input code page, but is written to the `.res` file as its UTF-16 LE representation so the output code page is not relevant.
-
-</aside></p>
 
 </div>
 
 <div class="bug-quirk-box">
 <span class="bug-quirk-category">parser bug/quirk, miscompilation</span>
 
-### Non-ASCII accelerator characters
+### Once a number, always a number
 
-The [`ACCELERATORS`](https://learn.microsoft.com/en-us/windows/win32/menurc/accelerators-resource) resource can be used to essentially define hotkeys for a program. In the message loop of a Win32 program, the `TranslateAccelerator` function can be used to automatically turn the relevant keystrokes into `WM_COMMAND` messages with the associated `idvalue` as the parameter (meaning it can be handled like any other message coming from a menu, button, etc).
+The behavior described in ["*Yes, that `MENU` over there (vague gesturing)*"](#yes-that-menu-over-there-vague-gesturing) can also be induced in both `CLASS` and `MENU` statements of `DIALOG`/`DIALOGEX` resources via redundant statements. As seen in ["*If you're not last, you're irrelevant*"](#if-you-re-not-last-you-re-irrelevant), multiple statements of the same type are allowed to be specified without much issue, but in the case of `CLASS` and `MENU`, if any of the duplicate statements are interpreted as a number, then the value of last statement of its type (the only one that matters) *is always interpreted as a number no matter what it contains*.
 
-Simplified example from [Using Keyboard Accelerators](https://learn.microsoft.com/en-us/windows/win32/menurc/using-keyboard-accelerators):
+<pre><code class="language-c" style="display:block;"><span style="opacity: 50%;">1 DIALOGEX 0, 0, 640, 480</span>
+  <span class="token_keyword">MENU</span> <span class="token_identifier">123</span> <span class="token_comment">// ignored, but causes the string below to be evaluated as a number</span>
+  <span class="token_keyword">MENU</span> <span class="token_identifier">IM_A_STRING_I_SWEAR</span>  <span class="token_function">────►</span>  <span class="token_function">8360</span>
+  <span class="token_keyword">CLASS</span> <span class="token_identifier">123</span> <span class="token_comment">// ignored, but causes the string below to be evaluated as a number</span>
+  <span class="token_keyword">CLASS</span> <span class="token_string">"Seriously, I'm a string"</span>  <span class="token_function">────►</span>  <span class="token_function">55127</span>
+<span style="opacity: 50%;">{
+  // ...
+}</span></code></pre>
 
-```rc
-1 ACCELERATORS {
-  "B", 300, CONTROL, VIRTKEY
-}
-```
-
-This associates the key combination `Ctrl + B` with the ID `300` which can then be handled in Win32 message loop processing code like this:
-
-```c
-// ...
-        case WM_COMMAND: 
-            switch (LOWORD(wParam)) 
-            {
-                case 300:
-// ...
-```
-
-There are also a number of ways to specify the keys for an accelerator, but the relevant form here is specifying "control characters" using a string literal with a `^` character, e.g. `"^B"`.
-
-<p><aside class="note">
-
-Note: There *is* a difference between how `"^B", 300` and `"B", 300, CONTROL, VIRTKEY` are compiled, but in practical terms they seem roughly equivalent (both are triggered by `Ctrl + B` on my keyboard). I'm not familiar enough with the accelerator Win32 APIs to know how exactly they differ or when one should be used over the other.
-
-</aside></p>
-
-When specifying a control character using `^` with an ASCII character that is outside of the range of `A-Z` (case insensitive), the Windows RC compiler will give the following error:
-
-<div class="short-rc-and-result">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```rc style="display: flex; flex-direction: column; justify-content: center; flex-grow: 1; margin-top: 0;"
-1 ACCELERATORS {
-  "^!", 300
-}
-```
-
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```none style="display: flex; flex-direction: column; flex-grow: 1; justify-content: center; margin-top: 0;"
-test.rc(2) : error RC2154 : control character out of range [^A - ^Z]
-```
-
-</div>
-</div>
-
-However, contrary to what the error implies, many (but not all) non-ASCII characters outside the `A-Z` range are actually accepted. For example, this is *not* an error (when the file is encoded as UTF-8):
-
-```rc
-#pragma code_page(65001)
-1 ACCELERATORS {
-  "^Ξ", 300
-}
-```
-
-<p><aside class="note">
-
-My guess is that the allowed codepoints outside the `A-Z` range are due to an inadvertent use of the `iswalpha` function or similar (see [here](https://gist.github.com/squeek502/2e9d0a4728a83eed074ad9785a209fd0) for a list of every non-ASCII codepoint that triggers the `control character out of range` error in the Windows RC compiler).
-
-</aside></p>
-
-When evaluating these `^` strings, the final 'control character' value is determined by subtracting `0x40` from the ASCII uppercased value of the character following the `^`, so in the case of `^b` that would look like:
-
-<div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(3, 1fr);">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
-b (0x62)
-```
-
-</div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
-B (0x42)
-```
-
-</div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
-0x42 - 0x40 = 0x02
-```
-
-</div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">character (hex value)</i></div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">uppercased (hex value)</i></div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">control character value</i></div>
-</div>
-
-The same process is used for any allowed codepoints outside the `A-Z` range, but the uppercasing is only done for ASCII values, so in the example above with `Ξ` (the codepoint `U+039E`; Greek Capital Letter Xi), the value is calculated like this:
-
-<div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(2, 1fr);">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
-Ξ (0x039E)
-```
-
-</div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
-0x039E - 0x40 = 0x035E
-```
-
-</div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">codepoint (hex value)</i></div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">control character value</i></div>
-</div>
-
-I believe this is a bogus value, since the final value of a control character is meant to be in the range of `0x01` (`^A`) through `0x1A` (`^Z`), which are treated specially. My assumption is that a value of `0x035E` would just be treated as the Unicode codepoint `U+035E` (Combining Double Macron), but I'm unsure exactly how I would go about testing this assumption since all aspects of the interaction between accelerators and non-ASCII key values are still fully opaque to me.
+The algorithm for coercing the strings to a number is the same as the one outlined in ["*Yes, that `MENU` over there (vague gesturing)*"](#yes-that-menu-over-there-vague-gesturing), and, for the same reasons discussed there, this too is always a miscompilation.
 
 #### `resinator`'s behavior
 
-In `resinator`, control characters specified as a quoted string with a `^` in an `ACCELERATORS` resource (e.g. `"^C"`) must be in the range of `A-Z` (case insensitive).
+`resinator` avoids the miscompilation and emits warnings:
 
 ```resinatorerror
-test.rc:3:3: error: invalid accelerator key '"^Ξ"': ControlCharacterOutOfRange
-  "^Ξ", 1
-  ^~~~~
+test.rc:2:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
+  MENU 123
+  ^~~~~~~~
+test.rc:4:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
+  CLASS 123
+  ^~~~~~~~~
+test.rc:5:9: warning: this class would be miscompiled by the Win32 RC compiler
+  CLASS "Seriously, I'm a string"
+        ^~~~~~~~~~~~~~~~~~~~~~~~~
+test.rc:5:9: note: the Win32 RC compiler would evaluate it as the ordinal/number value 55127
+
+test.rc:5:9: note: to avoid the potential miscompilation, only specify one class per dialog resource
+
+test.rc:3:8: warning: the id of this menu would be miscompiled by the Win32 RC compiler
+  MENU IM_A_STRING_I_SWEAR
+       ^~~~~~~~~~~~~~~~~~~
+test.rc:3:8: note: the Win32 RC compiler would evaluate the id as the ordinal/number value 8360
+
+test.rc:3:8: note: to avoid the potential miscompilation, only specify one menu per dialog resource
 ```
 
 </div>
 
 <div class="bug-quirk-box">
-<span class="bug-quirk-category">utterly baffling, miscompilation</span>
+<span class="bug-quirk-category">parser bug/quirk</span>
 
-### Codepoint misbehavior/miscompilation
+### L is not allowed there
 
-There are a few different ASCII control characters/Unicode codepoints that cause strange behavior in the Windows RC compiler if they are put certain places in a `.rc` file. Each case is sufficiently different that they might warrant their own section, but I'm just going to lump them together into one section here.
-
-#### U+0000 Null
-
-The Windows RC compiler behaves very strangely when embedded `NUL` (`<0x00>`) characters are in a `.rc` file. Some examples with regards to string literals:
+Like in C, an integer literal can be suffixed with `L` to signify that it is a 'long' integer literal. In the case of the Windows RC compiler, integer literals are typically 16 bits wide, and suffixing an integer literal with `L` will instead make it 32 bits wide.
 
 <div class="short-rc-and-result">
-
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;">1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span> <span class="token_string">"a</span><span class="token_unrepresentable" title="'NUL' control character">&lt;0x00&gt;</span><span class="token_string">"</span> <span class="token_punctuation">}</span></code></pre>
+
+<pre class="hexdump" style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+  <code class="language-c">1<span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_identifier">RCDATA</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_punctuation">{</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span style="padding: 0 3px;" class="o1d o-clr1">1</span><span class="token_punctuation">,</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span style="padding: 0 3px;" class="o1d o-clr2">2L</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_punctuation">}</span><span class="token_ansi_c_whitespace token_whitespace">
+</span></code>
+</pre>
+
 </div>
 <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>will error with <code>unexpected end of file in string literal</code></div></div></div>
 
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;">1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span> <span class="token_string">"</span><span class="token_unrepresentable" title="'NUL' control character">&lt;0x00&gt;</span><span class="token_string">"</span> <span class="token_punctuation">}</span></code></pre>
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>"succeeds" but results in an empty <code>.res</code> file (no <code>RCDATA</code> resource)</div></div></div>
+<pre class="hexdump" style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
+  <code class="language-none"><span class="o1d o-clr1">01 00</span> <span class="o1d o-clr2">02 00 00 00</span></code>
+</pre>
 
 </div>
-
-Even stranger is that the character count of the file seems to matter in some fashion for these examples. The first example has an odd character count, so it errors, but add one more character (or any odd number of characters; doesn't matter what/where they are, can even be whitespace) and it will not error. The second example has an even character count, so adding another character (again, anywhere) would induce the `unexpected end of file in string literal` error.
-
-#### U+0004 End of Transmission
-
-The Windows RC compiler seemingly treats 'End of Transmission' (`<0x04>`) characters outside of string literals as a 'skip the next character' instruction when parsing. This means that:
-
-<div class="gets-parsed-as">
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
-  <pre><code class="language-rc" style="white-space: inherit;">1 RCDATA<span class="token_unrepresentable" title="'End of Transmission' control character">&lt;0x04&gt;</span>! <span class="token_punctuation">{</span> <span class="token_string">"foo"</span> <span class="token_punctuation">}</span></code></pre>
 </div>
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center; align-items: center; text-align:center;">gets treated as if it were:</div>
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
+<p style="margin:0; text-align: center;"><i class="caption">A <code>RCDATA</code> resource definition and a hexdump of the resulting data in the <code>.res</code> file</i></p>
+
+However, outside of raw data blocks like the `RCDATA` example above, the `L` suffix is typically meaningless, as it has no bearing on the size of the integer used. For example, `DIALOG` resources have `x`, `y`, `width`, and `height` parameters, and they are each encoded in the data as a `u16` regardless of the integer literal used. If the value would overflow a `u16`, then the value is truncated back down to a `u16`, meaning in the following example all 4 parameters after `DIALOG` get compiled down to `1` as a `u16`:
 
 ```rc
-1 RCDATA { "foo" }
+1 DIALOG 1, 1L, 65537, 65537L {}
+```
+
+A few particular parameters, though, fully disallow integer literals with the `L` suffix from being used:
+
+- Any of the four parameters of the `FILEVERSION` statement of a `VERSIONINFO` resource
+- Any of the four parameters of the `PRODUCTVERSION` statement of a `VERSIONINFO` resource
+- Any of the two parameters of a `LANGUAGE` statement
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+LANGUAGE 1L, 2
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+test.rc(1) : error RC2145 : PRIMARY LANGUAGE ID too large
 ```
 
 </div>
 </div>
-</div>
-
-while
-
-<div class="gets-parsed-as">
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
-  <pre><code class="language-rc" style="white-space: inherit;">1 RCDATA<span class="token_unrepresentable" title="'End of Transmission' control character">&lt;0x04&gt;</span>!?! <span class="token_punctuation">{</span> <span class="token_string">"foo"</span> <span class="token_punctuation">}</span></code></pre>
-</div>
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center; align-items: center;">gets treated as if it were:</div>
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
-  <pre><code class="language-rc" style="white-space: inherit;">1 RCDATA?! <span class="token_punctuation">{</span> <span class="token_string">"foo"</span> <span class="token_punctuation">}</span></code></pre>
-</div>
-</div>
-</div>
-
-#### U+007F Delete
-
-The Windows RC compiler seemingly treats 'Delete' (`<0x7F>`) characters as a terminator in some capacity. A few examples:
 
 <div class="short-rc-and-result">
-
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;">1 RC<span class="token_unrepresentable" title="'Delete' control character">&lt;0x7F&gt;</span>DATA <span class="token_punctuation">{</span><span class="token_punctuation">}</span></code></pre>
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>gets parsed as <code>1 RC DATA {}</code>, leading to the compile error <code>file not found: DATA</code></div></div></div>
 
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;"><span class="token_unrepresentable" title="'Delete' control character">&lt;0x7F&gt;</span>1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span><span class="token_punctuation">}</span></code></pre>
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>"succeeds" but results in an empty <code>.res</code> file (no <code>RCDATA</code> resource)</div></div></div>
-
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;">1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span> <span class="token_string">"</span><span class="token_unrepresentable" title="'Delete' control character">&lt;0x7F&gt;</span><span class="token_string">"</span> <span class="token_punctuation">}</span></code></pre>
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>fails with <code>unexpected end of file in string literal</code></div></div></div>
-
-</div>
-
-#### U+001A Substitute
-
-The Windows RC compiler treats 'Substitute' (`<0x1A>`) characters as an 'end of file' marker:
-
-<div class="short-rc-and-result">
-
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;">1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span><span class="token_punctuation">}</span>
-<span class="token_unrepresentable" title="'Substitute' control character">&lt;0x1A&gt;</span>
-2 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span><span class="token_punctuation">}</span></code></pre>
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Only the <code>1 RCDATA {}</code> resource makes it into the <code>.res</code>, everything after the <code>&lt;0x1A&gt;</code> is ignored</div></div></div>
-
-</div>
-
-but use of the `<0x1A>` character can also lead to a (presumed) infinite loop in certain scenarios, like this one:
-
-<pre><code class="language-rc" style="white-space: inherit;">1 <span class="token_keyword">MENUEX</span> <span class="token_keyword">FIXED</span><span class="token_unrepresentable" title="'Substitute' control character">&lt;0x1A&gt;</span><span class="token_keyword">VERSION</span></code></pre>
-
-<p><aside class="note">
-
-Note: C preprocessors also typically treat `<0x1A>` as EOF when they are outside of string literals.
-
-</aside></p>
-
-#### U+0900, U+0A00, U+0A0D, U+0D00, U+2000
-
-The Windows RC compiler will error and/or ignore these codepoints when used outside of string literals, but not always. When used within string literals, the Windows RC compiler will miscompile them in some very bizarre ways.
-
-<p><aside class="note">
-
-Note: In the following example, the string contains the codepoints in this order:
-
-<pre><code class="language-rc"><span class="token_string">"</span><span class="token_unrepresentable" title="Devanagari Sign Inverted Candrabindu">&lt;U+0900&gt;</span><span class="token_unrepresentable" title="<reserved>">&lt;U+0A00&gt;</span><span class="token_unrepresentable" title="<reserved>">&lt;U+0A0D&gt;</span><span class="token_unrepresentable" title="Malayalam Sign Combining Anusvara Above">&lt;U+0D00&gt;</span><span class="token_unrepresentable" title="En Quad">&lt;U+2000&gt;</span><span class="token_string">"</span></code></pre>
-
-</aside></p>
-
-<div class="short-rc-and-result">
-  
-  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```rc style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"
-1 RCDATA { "ऀ਀਍ഀ " }
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+1 VERSIONINFO
+  FILEVERSION 1L, 2, 3, 4
+BEGIN
+END
 ```
 
-  </div>
-
-  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-    <div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Encoded as UTF-8 and compiled with <code>rc /c65001 test.rc</code>, meaning both the input and output code pages are UTF-8 (see <a href="#the-entirely-undocumented-concept-of-the-output-code-page">"<i>The entirely undocumented concept of the 'output' code page</i>"</a>)</div></div>
-  </div>
-
-</div>
-
-The expected result is the resource's data to contain the UTF-8 encoding of each codepoint, one after another, but that is not at all what we get:
-
-<pre><code class="language-none">Expected bytes: <span class="token_unrepresentable" title="UTF-8 encoding of U+0900">E0 A4 80</span> <span class="token_unrepresentable" title="UTF-8 encoding of U+0A00">E0 A8 80</span> <span class="token_unrepresentable" title="UTF-8 encoding of U+0A0D">E0 A8 8D</span> <span class="token_unrepresentable" title="UTF-8 encoding of U+0D00">E0 B4 80</span> <span class="token_unrepresentable" title="UTF-8 encoding of U+2000">E2 80 80</span>
-
-  Actual bytes: <span class="token_unrepresentable" title="Horizontal Tab (\t)">09</span> <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="New Line (\n)">0A</span> <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="New Line (\n)">0A</span> <span class="token_unrepresentable" title="Space">20</span></code></pre>
-
-These are effectively the transformations that are being made in this case:
-
-<pre><code class="language-rc"><span class="token_unrepresentable" title="Devanagari Sign Inverted Candrabindu">&lt;U+0900&gt;</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Horizontal Tab (\t)">09</span>
-<span class="token_unrepresentable" title="<reserved>">&lt;U+0A00&gt;</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="New Line (\n)">0A</span>
-<span class="token_unrepresentable" title="<reserved>">&lt;U+0A0D&gt;</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="New Line (\n)">0A</span>
-<span class="token_unrepresentable" title="Malayalam Sign Combining Anusvara Above">&lt;U+0D00&gt;</span>  <span class="token_function">────►</span>  &lt;omitted entirely&gt;
-<span class="token_unrepresentable" title="En Quad">&lt;U+2000&gt;</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Space">20</span></code></pre>
-
-It turns out that all the codepoints have been turned into some combination of whitespace characters: `<0x09>` is `\t`, `<0x20>` is `<space>`, and `<0x0A>` is `\n`. My guess as to what's going on here is that there's some whitespace detection code going seriously haywire, in combination with some sort of endianness heuristic. If we run the example through the preprocessor only (`rc.exe /p /c65001 test.rc`), we can see that things have already gone wrong (note: I've emphasized some whitespace characters):
-
-<pre><code class="language-rc"><span class="token_preprocessor">#line</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_identifier">1</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_string">"test.rc"</span><span class="token_rc_whitespace token_whitespace">
-</span><span class="token_identifier">1</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_keyword">RCDATA</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_punctuation">{</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_string">"</span><span class="token_unrepresentable" title="Horizontal Tab (\t)">────</span>
-
-<span class="token_unrepresentable" title="Space">·</span><span class="token_string">"</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_punctuation">}</span><span class="token_rc_whitespace token_whitespace">
-</span></code></pre>
-
-There's quite few bugs/quirks interacting here, so I'll do my best to explain.
-
-As detailed in ["*The Windows RC compiler 'speaks' UTF-16*"](#the-windows-rc-compiler-speaks-utf-16), the preprocessor always outputs UTF-16, which means that the preprocessor will interpret the bytes of the file using the current code page and then write them back out as UTF-16. So, with that in mind, let's think about `U+0900`, which erroneously gets transformed to the character `<0x09>` (`\t`):
-
-- In the `.rc` file, `U+0900` is encoded as UTF-8, meaning the bytes in the file are `E0 A4 80`
-- The preprocessor will decode those bytes into the codepoint `0x0900` (since we set the code page to UTF-8)
-
-While [integer endianness](https://en.wikipedia.org/wiki/Endianness) is irrelevant for UTF-8, it *is* relevant for UTF-16, since a code unit (`u16`) is 2 bytes wide. It seems possible that, because the Windows RC compiler is so UTF-16-centric, it has some heuristic to infer the endianness of a file, and that heuristic is being triggered for certain whitespace characters. That is, it might be that the Windows RC compiler sees the decoded `0x0900` codepoint and thinks it might be a byteswapped `0x0009`, and therefore *treats it as* `0x0009` (which is a tab character).
-
-This sort of thing would explain some of the changes we see to the preprocessed file:
-
-- `U+0900` could be confused for a byteswapped `<0x09>` (`\t`)
-- `U+0A00` could be confused for a byteswapped `<0x0A>` (`\n`)
-- `U+2000` could be confused for a byteswapped `<0x20>` (`<space>`)
-
-For `U+0A0D` and `U+0D00`, we need another piece of information: carriage returns (`<0x0D>`, `\r`) are completely ignored by the preprocessor (i.e. <code>RC<span class="token_unrepresentable" title="Carriage Return (\r)">&lt;0x0D&gt;</span>DATA</code> gets interpreted as `RCDATA`). With this in mind:
-
-- `U+0A0D`, ignoring the `0D` part, could be confused for a byteswapped `<0x0A>` (`\n`)
-- `U+0D00` could be confused for a byteswapped `<0x0D>` (`\r`), and therefore is ignored
-
-<p><aside class="note">
-
-Note: If this theory is true, then this endianness heuristic is being invoked in an inappropriate step along the preprocessing path, since it's acting on the *decoded codepoint* which no longer has any relationship to the encoding of the file. In other words, the UTF-8 encoding cannot be confused for these whitespace characters&mdash;only the decoded codepoint can be, but the decoded codepoint is an integer with native endianness so there's no longer any reason for an endianness heuristic.
-
-</aside></p>
-
-Now that we have a theory about what might be going wrong in the preprocessor, we can examine the preprocessed version of the example:
-
-<pre><code class="language-rc"><span class="token_preprocessor">#line</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_identifier">1</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_string">"test.rc"</span><span class="token_rc_whitespace token_whitespace">
-</span><span class="token_identifier">1</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_keyword">RCDATA</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_punctuation">{</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_string">"<span class="token_unrepresentable" title="Horizontal Tab (\t)">────</span>
-
-<span class="token_unrepresentable" title="Space">·</span>"</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_punctuation">}</span><span class="token_rc_whitespace token_whitespace">
-</span></code></pre>
-
-From ["*Multiline strings don't behave as expected/documented*"](#multiline-strings-don-t-behave-as-expected-documented), we know that this string literal&mdash;contrary to the documentation&mdash;is an accepted multiline string literal, and we also know that whitespace in these undocumented string literals is typically collapsed, so the two newlines and the trailing space should become one <code><span class="token_unrepresentable" title="Space">20</span></code> <code><span class="token_unrepresentable" title="New Line (\n)">0A</span></code> sequence. In fact, if we take the output of the preprocessor and copy it into a new file and compile *that*, we get a completely different result that's more in line with what we expect:
-
-<div class="short-rc-and-result">
-  
-  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```rc style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"
-1 RCDATA { "	
-
- " }
-```
-
-  </div>
-
-  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-<pre style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><code class="language-none">Compiled data: <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="New Line (\n)">0A</span></code></pre>
-  </div>
-
-</div>
-
-As detailed in ["*The column of a tab character matters*"](#the-column-of-a-tab-character-matters), an embedded tab character gets converted to a variable number of spaces depending on which column it's at in the file. It just so happens that it gets converted to 4 spaces in this case, and the remaining <code><span class="token_unrepresentable" title="Space">20</span></code> <code><span class="token_unrepresentable" title="New Line (\n)">0A</span></code> is the collapsed whitespace following the tab character.
-
-However, what we actually see when compiling the `1 RCDATA { "ऀ਀਍ഀ " }` example is:
-
-<pre><code class="language-none"><span class="token_unrepresentable" title="Horizontal Tab (\t)">09</span> <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="New Line (\n)">0A</span> <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="New Line (\n)">0A</span> <span class="token_unrepresentable" title="Space">20</span></code></pre>
-
-where these transformations are occurring:
-
-<pre><code class="language-rc"><span class="token_unrepresentable" title="Devanagari Sign Inverted Candrabindu">&lt;U+0900&gt;</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Horizontal Tab (\t)">09</span>
-<span class="token_unrepresentable" title="<reserved>">&lt;U+0A00&gt;</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="New Line (\n)">0A</span>
-<span class="token_unrepresentable" title="<reserved>">&lt;U+0A0D&gt;</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="New Line (\n)">0A</span>
-<span class="token_unrepresentable" title="Malayalam Sign Combining Anusvara Above">&lt;U+0D00&gt;</span>  <span class="token_function">────►</span>  &lt;omitted entirely&gt;
-<span class="token_unrepresentable" title="En Quad">&lt;U+2000&gt;</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Space">20</span></code></pre>
-
-So it seems that something about when this bug/quirk takes place in the compiler pipeline affects how the preprocessor/compiler treats the input/output.
-
-- Normally, an embedded tab character will get converted to spaces during compilation, but even though the Windows RC compiler seems to *think* `<U+0900>` is an embedded tab character, it gets compiled into `<0x09>` rather than converted to space characters.
-- Normally, an undocumented-but-accepted multiline string literal has its whitespace collapsed, but even though the Windows RC compiler seems to *think* `<U+0A00>` and `<U+0A0D>` are new lines and `<U+2000>` is a space, it doesn't collapse them.
-
-So, to summarize, these codepoints likely confuse the Windows RC compiler into thinking they are whitespace, and the compiler treats them as the whitespace character in some ways, but introduces novel behavior for those characters in other ways. In any case, this is a miscompilation, because these codepoints have no *real* relationship to the whitespace characters the Windows RC compiler mistakes them for.
-
-#### U+FEFF Byte Order Mark
-
-For the most part, the Windows RC compiler skips over `<U+FEFF>` ([byte-order mark or BOM](https://codepoints.net/U+FEFF)) everywhere, even within string literals, within names, etc. (e.g. `RC<U+FEFF>DATA` will compile as if it were `RCDATA`). However, there are edge cases where a BOM will cause cryptic and unexplained errors, like this:
-
-<div class="short-rc-and-result">
-
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;"><span class="token_preprocessor">#pragma</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_identifier">code_page</span><span class="token_punctuation">(</span><span class="token_identifier">65001</span><span class="token_punctuation">)</span>
-1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span> 1<span class="token_unrepresentable" title="'Byte-Order Mark' Unicode codepoint">&lt;U+FEFF&gt;</span>1 <span class="token_punctuation">}</span></code></pre>
 </div>
 <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
 ```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"
-test.rc(2) : fatal error RC1011: compiler limit : '1 }
-': macro definition too big
+test.rc(2) : error RC2127 : version WORDs separated by commas expected
 ```
 
 </div>
-
 </div>
 
-#### U+E000 Private Use Character
-
-This behaves similarly to the byte-order mark (it gets skipped/ignored wherever it is), although `<U+E000>` seems to avoid causing errors like the BOM does.
-
-#### U+FFFE, U+FFFF Noncharacter
-
-The behavior of these codepoints on their own is strange, but it's not the most interesting part about them, so it's up to you if you want to expand this:
-
-<details class="box-border" style="padding: 1em; padding-bottom: 0;">
-<summary style="margin-bottom: 1em;">Behavior of U+FFFE and U+FFFF on their own</summary>
-
-<div class="box-border" style="padding: 1em; padding-bottom: 0; margin-bottom: 1em;">
-
-<div class="short-rc-and-result">
-  
-  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;">1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span> <span class="token_string">"</span><span class="token_unrepresentable" title="'Noncharacter' Unicode codepoint">&lt;U+FFFE&gt;</span><span class="token_string">"</span> <span class="token_punctuation">}</span></code></pre>
-  </div>
-
-  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-    <div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Encoded as UTF-8 and compiled with <code>rc /c65001 test.rc</code>, meaning both the input and output code pages are UTF-8 (see <a href="#the-entirely-undocumented-concept-of-the-output-code-page">"<i>The entirely undocumented concept of the 'output' code page</i>"</a>)</div></div>
-  </div>
-
-</div>
-
-<pre><code class="language-none">Expected bytes: <span class="token_unrepresentable" title="UTF-8 encoding of U+FFFE">EF BF BE</span>
-
-  Actual bytes: <span class="token_unrepresentable" title="UTF-8 encoding of U+FFFD Replacement Character (�)">EF BF BD</span> <span class="token_unrepresentable" title="UTF-8 encoding of U+FFFD Replacement Character (�)">EF BF BD</span> (UTF-8 encoding of �, twice)</code></pre>
-
-`U+FFFF` behaves the same way.
-
-</div>
-
-<div class="box-border" style="padding: 1em; padding-bottom: 0; margin-bottom: 1em;">
-
-<div class="short-rc-and-result">
-  
-  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;">1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span> <span class="token_string">L"</span><span class="token_unrepresentable" title="'Noncharacter' Unicode codepoint">&lt;U+FFFE&gt;</span><span class="token_string">"</span> <span class="token_punctuation">}</span></code></pre>
-  </div>
-
-  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-    <div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Encoded as UTF-8 and compiled with <code>rc /c65001 test.rc</code>, meaning both the input and output code pages are UTF-8 (see <a href="#the-entirely-undocumented-concept-of-the-output-code-page">"<i>The entirely undocumented concept of the 'output' code page</i>"</a>)</div></div>
-  </div>
-
-</div>
-
-<pre><code class="language-none">Expected bytes: <span class="token_unrepresentable" title="UTF-16 LE encoding of U+FFFE">FE FF</span>
-
-  Actual bytes: <span class="token_unrepresentable" title="UTF-16 LE encoding of U+FFFD Replacement Character (�)">FD FF</span> <span class="token_unrepresentable" title="UTF-16 LE encoding of U+FFFD Replacement Character (�)">FD FF</span> (UTF-16 LE encoding of �, twice)</code></pre>
-
-`U+FFFF` behaves the same way.
-
-</div>
-
-<div class="box-border" style="padding: 1em; padding-bottom: 0; margin-bottom: 1em;">
-
-<div class="short-rc-and-result">
-  
-  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;"><span class="token_preprocessor">#pragma</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_identifier">code_page</span><span class="token_punctuation">(</span><span class="token_identifier">65001</span><span class="token_punctuation">)</span>
-1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span> <span class="token_string">"</span><span class="token_unrepresentable" title="'Noncharacter' Unicode codepoint">&lt;U+FFFE&gt;</span><span class="token_string">"</span> <span class="token_punctuation">}</span></code></pre>
-  </div>
-
-  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-    <div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Encoded as UTF-8 and compiled with <code>rc test.rc</code>, meaning the input code page is UTF-8, but the output code page is Windows-1252 (see <a href="#the-entirely-undocumented-concept-of-the-output-code-page">"<i>The entirely undocumented concept of the 'output' code page</i>"</a>)</div></div>
-  </div>
-
-</div>
-
-<pre><code class="language-none">Expected bytes: <span class="token_unrepresentable" title="Windows-1252 encoding of '?'">3F</span>
-
-  Actual bytes: <span class="token_unrepresentable" title="Windows-1252 encoding of Latin Small Letter Y with Diaeresis (ÿ)">FE</span> <span class="token_unrepresentable" title="Windows-1252 encoding of Latin Small Letter Thorn (þ)">FF</span></code></pre>
-
-`U+FFFF` behaves the same way, but would get compiled to `FF FF`.
-
-</div>
-
-<div class="box-border" style="padding: 1em; padding-bottom: 0; margin-bottom: 1em;">
-
-<div class="short-rc-and-result">
-  
-  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;"><span class="token_preprocessor">#pragma</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_identifier">code_page</span><span class="token_punctuation">(</span><span class="token_identifier">65001</span><span class="token_punctuation">)</span>
-1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span> <span class="token_string">L"</span><span class="token_unrepresentable" title="'Noncharacter' Unicode codepoint">&lt;U+FFFE&gt;</span><span class="token_string">"</span> <span class="token_punctuation">}</span></code></pre>
-  </div>
-
-  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-    <div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Encoded as UTF-8 and compiled with <code>rc test.rc</code>, meaning the input code page is UTF-8, but the output code page is Windows-1252 (see <a href="#the-entirely-undocumented-concept-of-the-output-code-page">"<i>The entirely undocumented concept of the 'output' code page</i>"</a>)</div></div>
-  </div>
-
-</div>
-
-<pre><code class="language-none">Expected bytes: <span class="token_unrepresentable" title="UTF-16 LE encoding of U+FFFE">FE FF</span>
-
-  Actual bytes: <span class="token_unrepresentable" title="UTF-16 LE encoding of U+00FF Latin Small Letter Y with Diaeresis (ÿ)">FE 00</span> <span class="token_unrepresentable" title="UTF-16 LE encoding of U+00FE Latin Small Letter Thorn (þ)">FF 00</span></code></pre>
-
-
-`U+FFFF` behaves the same way, but would get compiled to `FF 00 FF 00`.
-
-</div>
-
-</details>
-
-The *interesting* part about `U+FFFE` and `U+FFFF` is that their presence affects how *every non-ASCII codepoint in the file* is interpreted/compiled. That is, if either one appears anywhere in a file, it affects the interpretation of the entire file. Let's start with this example and try to understand what might be happening with the `䄀` characters in the `RCD䄀T䄀` resource type:
-
-<div class="short-rc-and-result">
-  
-  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;">1 RCD䄀T䄀 <span class="token_punctuation">{</span> <span class="token_string">"</span><span class="token_unrepresentable" title="'Noncharacter' Unicode codepoint">&lt;U+FFFE&gt;</span><span class="token_string">"</span> <span class="token_punctuation">}</span></code></pre>
-  </div>
-
-  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-    <div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Encoded as UTF-8 and compiled with <code>rc /c65001 test.rc</code>, meaning both the input and output code pages are UTF-8 (see <a href="#the-entirely-undocumented-concept-of-the-output-code-page">"<i>The entirely undocumented concept of the 'output' code page</i>"</a>)</div></div>
-  </div>
-
-</div>
-
-If we run this through the preprocessor only (`rc /c65001 /p test.rc`), then it ends up as:
+It is true that these parameters are limited to `u16`, so using an `L` suffix is likely a mistake, but that is also true of many other parameters for which the Windows RC compiler happily allows `L` suffixed numbers for. It's unclear why these particular parameters are singled out, and even more unclear given the fact that specifying these parameters using an integer literal that would overflow a `u16` does not actually trigger an error (and instead it truncates the values to a `u16`):
 
 ```rc
-1 RCDATA { "��" }
+1 VERSIONINFO
+  FILEVERSION 65537, 65538, 65539, 65540
+BEGIN
+END
 ```
 
-The interpretation of the `<U+FFFE>` codepoint itself is the same as described above, but we can also see that the following transformation is occurring for the `䄀` codepoint:
+The compiled `FILEVERSION` in this case will be `1`, `2`, `3`, `4`:
 
-<pre><code class="language-rc"><span class="token_unrepresentable" title="CJK Unified Ideograph-4100">&lt;U+4100&gt;</span> <span class="token_punctuation">(</span>䄀<span class="token_punctuation">)</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Latin Capital Letter A">&lt;U+0041&gt;</span> <span class="token_punctuation">(</span>A<span class="token_punctuation">)</span></code></pre>
-
-And this transformation is not an illusion. If you compile this example `.rc` file, it will get compiled as the predefined `RCDATA` resource type. So, what's going on here?
-
-Let's back up a bit and talk about [UTF-16](https://en.wikipedia.org/wiki/UTF-16) and [endianness](https://en.wikipedia.org/wiki/Endianness). Since UTF-16 uses 2 bytes per code unit, it can be encoded either as little-endian (least-significant byte first) or big-endian (most-significant byte first).
-
-<div class="short-rc-and-result">
-  
-  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-    <div class="box-bg" style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Codepoints:</div></div>
-  </div>
-
-  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-none"><span class="token_unrepresentable" title="Latin Capital Letter A">&lt;U+0041&gt;</span> <span class="token_unrepresentable" title="Meetei Mayek Letter Huk">&lt;U+ABCD&gt;</span> <span class="token_unrepresentable" title="CJK Unified Ideograph-4100">&lt;U+4100&gt;</span></code></pre>
-  </div>
-
-  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-    <div class="box-bg" style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Little-Endian UTF-16:</div></div>
-  </div>
-
-  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-none"><span class="token_unrepresentable" title="Latin Capital Letter A">41 00</span> <span class="token_unrepresentable" title="Meetei Mayek Letter Huk">CD AB</span> <span class="token_unrepresentable" title="CJK Unified Ideograph-4100">00 41</span></code></pre>
-  </div>
-
-  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-    <div class="box-bg" style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Big-Endian UTF-16:</div></div>
-  </div>
-
-  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-none"><span class="token_unrepresentable" title="Latin Capital Letter A">00 41</span> <span class="token_unrepresentable" title="Meetei Mayek Letter Huk">AB CD</span> <span class="token_unrepresentable" title="CJK Unified Ideograph-4100">41 00</span></code></pre>
-  </div>
-
-</div>
-
-In many cases, the endianness of the encoding can be inferred, but in order to make it unambiguous, a [byte-order mark](https://en.wikipedia.org/wiki/Byte_order_mark) (BOM) can be included (usually at the start of a file). The codepoint of the BOM is [`U+FEFF`](https://codepoints.net/U+FEFF), so that's either encoded as `FF FE` for little-endian or `FE FF` for big-endian.
-
-<p><aside class="note">
-
-Note: The Windows RC compiler writes UTF-16 as little-endian, and its preprocessor always outputs UTF-16 (see [*The Windows RC compiler 'speaks' UTF-16*](#the-windows-rc-compiler-speaks-utf-16))
-
-</aside></p>
-
-With this in mind, consider how one might handle a big-endian UTF-16 byte-order mark in a file when starting with the assumption that the file is little-endian.
-
-<div class="short-rc-and-result">
-  
-  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-    <div class="box-bg" style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Big-endian UTF-16 encoded byte-order mark:</div></div>
-  </div>
-
-  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-none"><span class="token_unrepresentable" title="Big-endian UTF-16 encoding of U+FEFF (BOM)">FE FF</span></code></pre>
-  </div>
-
-  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-    <div class="box-bg" style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Decoded codepoint, assuming little-endian:</div></div>
-  </div>
-
-  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-none"><span class="token_unrepresentable" title="Noncharacter">&lt;U+FFFE&gt;</span></code></pre>
-  </div>
-
-</div>
-
-So, starting with the assumption that a file is little-endian, treating the decoded codepoint `<U+FFFE>` as a trigger for switching to interpreting the file as big-endian can make sense. However, it *only* makes sense when you are working with an encoding where endianness matters (e.g. UTF-16 or UTF-32). It appears, though, that the Windows RC compiler is using this *"`<U+FFFE>`? Oh, the file is big-endian and I should byteswap every codepoint"* heuristic even when it's dealing with UTF-8, which doesn't make any sense&mdash;endianness is irrelevant for UTF-8, since its code units are a single byte.
-
-As mentioned in [`U+0900`, `U+0A00`, etc](#u-0900-u-0a00-u-0a0d-u-0d00-u-2000), this endianness handling is likely happening in the wrong phase of the compiler pipeline; it's acting on already-decoded codepoints rather than affecting how the bytes of the file are decoded.
-
-If I had to guess as to what's going on here, it would be something like:
-
-- The preprocessor decodes all codepoints, and internally assumes little-endian in some fashion
-- If the preprocessor ever encounters the decoded codepoint `<U+FFFE>`, it assumes it must be a byteswapped byte-order mark, indicating that the file is encoded as big-endian, and sets some internal 'big-endian' flag
-- When writing the result after preprocessing, that 'big-endian' flag is used to determine whether or not to byteswap every codepoint in the file before writing it (except ASCII codepoints for some reason)
-
-This would explain the behavior with `䄀` we saw earlier, where this `.rc` file:
-
-<pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;">1 RCD䄀T䄀 <span class="token_punctuation">{</span> <span class="token_string">"</span><span class="token_unrepresentable" title="'Noncharacter' Unicode codepoint">&lt;U+FFFE&gt;</span><span class="token_string">"</span> <span class="token_punctuation">}</span></code></pre>
-
-gets preprocessed into:
-
-```rc
-1 RCDATA { "��" }
 ```
-
-which means the following (byteswapping) transformation occurred, even to the `䄀` characters preceding the `<U+FFFE>`:
-
-<pre><code class="language-rc"><span class="token_unrepresentable" title="CJK Unified Ideograph-4100">&lt;U+4100&gt;</span> <span class="token_punctuation">(</span>䄀<span class="token_punctuation">)</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Latin Capital Letter A">&lt;U+0041&gt;</span> <span class="token_punctuation">(</span>A<span class="token_punctuation">)</span></code></pre>
-
-##### Wait, what about `U+FFFF`?
-
-`U+FFFF` works the exact same way as `U+FFFE`&mdash;it, too, causes all non-ACII codepoints in the file to be byteswapped&mdash;and I have no clue as to why that would be since `U+FFFF` has no apparent relationship to a BOM. My only guess is an errant `>= 0xFFFE` check on a `u16` value.
+65537 = 0x10001; truncated to u16 = 0x0001
+65538 = 0x10002; truncated to u16 = 0x0002
+65539 = 0x10003; truncated to u16 = 0x0003
+65540 = 0x10004; truncated to u16 = 0x0004
+```
 
 #### `resinator`'s behavior
 
-Any codepoints that cause misbehaviors are either a compile error:
+`resinator` allows `L` suffixed integer literals everywhere and truncates the value down to the appropriate number of bits when necessary.
 
 ```resinatorerror
-test.rc:1:9: error: character '\x04' is not allowed outside of string literals
-1 RCDATA�!?! { "foo" }
-        ^
-```
-```resinatorerror
-test.rc:1:1: error: character '\x7F' is not allowed
-�1 RCDATA {}
-^
+test.rc:1:10: warning: this language parameter would be an error in the Win32 RC compiler
+LANGUAGE 1L, 2
+         ^~
+test.rc:1:10: note: to avoid the error, remove any L suffixes from numbers within the parameter
 ```
 
-or the miscompilation is avoided and a warning is emitted:
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk</span>
+
+### Unary operators are an illusion
+
+Typically, unary `+`, `-`, etc. operators are just that&mdash;operators; they are separate tokens that act on other tokens (number literals, variables, etc). However, in the Windows RC compiler, they are not real operators.
+
+#### Unary `-`
+
+The unary `-` is included as part of a number literal, not as a distinct operator. This behavior can be confirmed in a rather strange way, taking advantage of a separate quirk described in ["*Number expressions as filenames*"](#number-expressions-as-filenames). When a resource's filename is specified as a number expression, the file path it ultimately looks for is the last number literal in the expression, so for example:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+1 FOO (567 + 123)
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+test.rc(1) : error RC2135 : file not found: 123
+```
+
+</div>
+</div>
+
+And if we throw in a unary `-` like so, then it gets included as part of the filename:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+1 FOO (567 + -123)
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+test.rc(1) : error RC2135 : file not found: -123
+```
+
+</div>
+</div>
+
+This quirk leads to a few unexpected valid patterns, since `-` on its own is also considered a valid number literal (and it resolves to `0`), so:
+
+```rc
+1 FOO { 1-- }
+```
+
+evaluates to `1-0` and results in `1` being written to the resource's data, while:
+
+```rc
+1 FOO { "str" - 1 }
+```
+
+looks like a string literal minus 1, but it's actually interpreted as 3 separate raw data values (`str`, `-` [which evaluates to 0], and `1`), since commas between data values in a raw data block are optional.
+
+Additionally, it means that otherwise valid looking expressions may not actually be considered valid:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+1 FOO { (-(123)) }
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+test.rc(1) : error RC1013 : mismatched parentheses
+```
+
+</div>
+</div>
+
+#### Unary `~`
+
+The unary NOT (`~`) works exactly the same as the unary `-` and has all the same quirks. For example, a `~` on its own is also a valid number literal:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+1 FOO { ~ }
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div class="box-border" style="display: flex; flex-direction: column; flex-grow: 1; padding: 1em; margin: 0.5em 0; margin-top: 0;"><div>Data is a <code>u16</code> with the value <code>0xFFFF</code></div></div>
+</div>
+</div>
+
+And `~L` (to turn the integer into a `u32`) is valid in the same way that `-L` would be valid:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+1 FOO { ~L }
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div class="box-border" style="display: flex; flex-direction: column; flex-grow: 1; padding: 1em; margin: 0.5em 0; margin-top: 0;"><div>Data is a <code>u32</code> with the value <code>0xFFFFFFFF</code></div></div>
+</div>
+</div>
+
+#### Unary `+`
+
+The unary `+` is almost entirely a hallucination; it can be used in some places, but not others, without any discernible rhyme or reason.
+
+This is valid (and the parameters evaluate to `1`, `2`, `3`, `4` as expected):
+
+```rc
+1 DIALOG +1, +2, +3, +4 {}
+```
+
+but this is an error:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+1 FOO { +123 }
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+test.rc(1) : error RC2164 : unexpected value in RCDATA
+```
+
+</div>
+</div>
+
+and so is this:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+1 DIALOG (+1), 2, 3, 4 {}
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+test.rc(1) : error RC2237 : numeric value expected at DIALOG
+```
+
+</div>
+</div>
+
+Because the rules around the unary `+` are so opaque, I am unsure if it shares many of the same properties as the unary `-`. I do know, though, that `+` on its own does not seem to be an accepted number literal in any case I've seen so far.
+
+#### `resinator`'s behavior
+
+`resinator` matches the Windows RC compiler's behavior around unary `-`/`~`, but disallows unary `+` entirely:
 
 ```resinatorerror
-test.rc:1:12: warning: codepoint U+0900 within a string literal would be miscompiled by the Win32 RC compiler (it would get treated as U+0009)
-1 RCDATA { "ऀ਀਍ഀ " }
-           ^~~~~~~
+test.rc:1:10: error: expected number or number expression; got '+'
+1 DIALOG +1, +2, +3, +4 {}
+         ^
+test.rc:1:10: note: the Win32 RC compiler may accept '+' as a unary operator here, but it is not supported in this implementation; consider omitting the unary +
 ```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">miscompilation</span>
+
+### Your fate will be determined by a comma
+
+Version information is specified using key/value pairs within `VERSIONINFO` resources. In the compiled `.res` file, the value data should always start at a 4-byte boundary, so after the key data is written, a variable number of padding bytes are written to get back to 4-byte alignment:
+
+<div style="text-align: center; display: grid; grid-gap: 10px; grid-template-columns: repeat(2, 1fr);">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+    <code class="language-none"><span style="opacity: 50%;">1 VERSIONINFO {</span>
+  <span class="token_keyword">VALUE</span> <span style="background: rgba(255,0,0,.1);">"key"</span>, <span style="background: rgba(0,255,0,.1);">"value"</span>
+<span style="opacity: 50%;">}</span></code>
+  </pre>
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+    <code class="language-none"><span style="opacity: 25%;">......</span><span style="background: rgba(255,0,0,.1);">k.e.y...</span><span style="background: rgba(0,0,255,.1); outline: 2px solid blue;">..</span>
+<span style="background: rgba(0,255,0,.1);">v.a.l.u.e...</span><span style="opacity: 25%;">....</span></code>
+  </pre>
+</div>
+</div>
+<p style="margin:0; text-align: center;"><i class="caption">Two padding bytes are inserted after the <code>key</code> to get back to 4-byte alignment</i></p>
+
+However, if the comma between the key and value is omitted, then for whatever reason the padding bytes are also omitted:
+
+<div style="text-align: center; display: grid; grid-gap: 10px; grid-template-columns: repeat(2, 1fr);">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+    <code class="language-none"><span style="opacity: 50%;">1 VERSIONINFO {</span>
+  <span class="token_keyword">VALUE</span> <span style="background: rgba(255,0,0,.1);">"key"</span> <span style="background: rgba(0,255,0,.1);">"value"</span>
+<span style="opacity: 50%;">}</span></code>
+  </pre>
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+    <code class="language-none"><span style="opacity: 25%;">......</span><span style="background: rgba(255,0,0,.1);">k.e.y...</span><span style="background: rgba(0,255,0,.1);">v.
+a.l.u.e...</span><span style="opacity: 25%;">......</span></code>
+  </pre>
+</div>
+</div>
+<p style="margin:0; text-align: center;"><i class="caption">Without the comma between <code>"key"</code> and <code>"value"</code>, the padding bytes are not written</i></p>
+
+The problem here is that consumers of the `VERSIONINFO` resource (e.g. [`VerQueryValue`](https://learn.microsoft.com/en-us/windows/win32/api/winver/nf-winver-verqueryvaluew)) will expect the padding bytes, so it will try to read the value as if the padding bytes were there. For example, with the simple `"key" "value"` example:
+
+```c
+VerQueryValueW(verbuf, L"\\key", &querybuf, &querysize);
+wprintf(L"%s\n", querybuf);
+```
+
+Which will print:
+
+```none
+alue
+```
+
+Plus, depending on the length of the key string, it can end up being even worse, since the value could end up being written over the top of the null terminator of the key. Here's an example:
+
+<div style="text-align: center; display: grid; grid-gap: 10px; grid-template-columns: repeat(2, 1fr);">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+    <code class="language-none"><span style="opacity: 50%;">1 VERSIONINFO {</span>
+  <span class="token_keyword">VALUE</span> <span style="background: rgba(255,0,0,.1);">"ke"</span> <span style="background: rgba(0,255,0,.1);">"value"</span>
+<span style="opacity: 50%;">}</span></code>
+  </pre>
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+    <code class="language-none"><span style="opacity: 25%;">......</span><span style="background: rgba(255,0,0,.1);">k.e.</span><span style="background: rgba(0,255,0,.1);">v.a.l.
+u.e...</span><span style="opacity: 25%;">..........</span></code>
+  </pre>
+</div>
+</div>
+
+And the problems don't end there&mdash;`VERSIONINFO` is compiled into a tree structure, meaning the misreading of one node affects the reading of future nodes. Here's a (simplified) real-world `VERSIONINFO` resource definition from a random `.rc` file in [Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples):
+
+```rc
+VS_VERSION_INFO VERSIONINFO
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904e4"
+        BEGIN
+            VALUE "CompanyName", "Microsoft"
+            VALUE "FileDescription", "AmbientLightAware"
+            VALUE "FileVersion", "1.0.0.1"
+            VALUE "InternalName", "AmbientLightAware.exe"
+            VALUE "LegalCopyright", "(c) Microsoft.  All rights reserved."
+            VALUE "OriginalFilename", "AmbientLightAware.exe"
+            VALUE "ProductName", "AmbientLightAware"
+            VALUE "ProductVersion", "1.0.0.1"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1252
+    END
+END
+```
+
+and here's the Properties window of an `.exe` compiled with and without commas between all the key/value pairs:
+
+<div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<img style="margin-left:auto; margin-right:auto; display: block; margin-bottom: 8px; display: flex; flex-direction: column; flex-grow: 1;" src="/images/every-rc-exe-bug-quirk-probably/versioninfo-correct.png">
+<i class="caption">Correct version information with commas included...</i>
+</div>
+
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<img style="margin-left:auto; margin-right:auto; display: block; margin-bottom: 8px; display: flex; flex-direction: column; flex-grow: 1;" src="/images/every-rc-exe-bug-quirk-probably/versioninfo-broken.png">
+<i class="caption">...but completely broken if the commas are omitted</i>
+</div>
+</div>
+
+<p><aside class="note">
+
+Note: This miscompilation will only occur when:
+
+- the comma between the key and the first value in a `VALUE` statement is omitted, *and*
+- the first value is a quoted string
+
+That is, `VALUE "key" "value"` will miscompile but `VALUE "key", "value"` or `VALUE "key" 1` won't.
+
+</aside></p>
+
+#### `resinator`'s behavior
+
+`resinator` avoids the miscompilation (always inserts the necessary padding bytes) and emits a warning.
+
 ```resinatorerror
-test.rc:1:12: warning: codepoint U+FFFF within a string literal would cause the entire file to be miscompiled by the Win32 RC compiler
-1 RCDATA { "￿" }
+test.rc:2:15: warning: the padding before this quoted string value would be miscompiled by the Win32 RC compiler
+  VALUE "key" "value"
+              ^~~~~~~
+test.rc:2:15: note: to avoid the potential miscompilation, consider adding a comma between the key and the quoted string
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">miscompilation</span>
+
+### Mismatch in length units in `VERSIONINFO` nodes
+
+A `VALUE` within a `VERSIONINFO` resource is specified using this syntax:
+
+```rc
+VALUE <name>, <value(s)>
+```
+
+The `value(s)` can be specified as either number literals or quoted string literals, like so:
+
+```rc
+1 VERSIONINFO {
+  VALUE "numbers", 123, 456
+  VALUE "strings", "foo", "bar"
+}
+```
+
+Each `VALUE` is compiled into a structure that contains the length of its value data, but the unit used for the length varies:
+
+- For strings, the string data is written as UTF-16, and the length is given in UTF-16 code units (2 bytes per code unit)
+- For numbers, the numbers are written either as `u16` or `u32` (depending on the presence of an `L` suffix), and the length is given in bytes
+
+So, for the above example, the `"numbers"` value would be compiled into a node with:
+
+- "Binary" data, meaning the length is given in bytes
+- A length of `4`, since each number literal is compiled as a `u16`
+- Data bytes of <code class="hexdump"><span class="o1d o-clr3">7B 00</span></code> <code class="hexdump"><span class="o1d o-clr4">C8 01</span></code>, where <code class="hexdump"><span class="o1d o-clr3">7B 00</span></code> is `123` and <code class="hexdump"><span class="o1d o-clr4">C8 01</span></code> is `456` (as little-endian `u16`)
+
+and the `"strings"` value would be compiled into a node with:
+
+- "String" data, meaning the length is given in UTF-16 code units
+- A length of `8`, since each string is 3 UTF-16 code units plus a `NUL`-terminator
+- Data bytes of <code class="hexdump"><span class="o1d o-clr1">66 00 6F 00 6F 00 00 00</span> <span class="o1d o-clr2">62 00 61 00 72 00 00 00</span></code>, where <code class="hexdump"><span class="o1d o-clr1">66 00 6F 00 6F 00 00 00</span></code> is `"foo"` and <code class="hexdump"><span class="o1d o-clr2">62 00 61 00 72 00 00 00</span></code> is `"bar"` (both as `NUL`-terminated little-endian UTF-16)
+
+This is a bit bizarre, but when separated out like this it works fine. The problem is that there is nothing stopping you from mixing strings and numbers in one value, in which case the Windows RC compiler freaks out and writes the type as "binary" (meaning the length should be interpreted as a byte count), but the length as a mixture of byte count and UTF-16 code unit count. For example, with this resource:
+
+```rc
+1 VERSIONINFO {
+  VALUE "something", "foo", 123
+}
+```
+
+Its value's data will get compiled into these bytes: <code class="hexdump"><span class="o1d o-clr1">66 00 6F 00 6F 00 00 00</span> <span class="o1d o-clr3">7B 00</span></code>, where <code class="hexdump"><span class="o1d o-clr1">66 00 6F 00 6F 00 00 00</span></code> is `"foo"` (as `NUL`-terminated little-endian UTF-16) and <code class="hexdump"><span class="o1d o-clr3">7B 00</span></code> is `123` (as a little-endian `u16`). This makes for a total of 10 bytes (8 for `"foo"`, 2 for `123`), but the Windows RC compiler erroneously reports the value's data length as 6 (4 for `"foo"` [counted as UTF-16 code units], and 2 for `123` [counted as bytes]).
+
+This miscompilation has similar results as those detailed in ["*Your fate will be determined by a comma*"](#your-fate-will-be-determined-by-a-comma):
+- The full data of the value will not be read by a parser
+- Due to the tree structure of `VERSIONINFO` resource data, this has knock-on effects on all following nodes, meaning the entire resource will be mangled
+
+<p><aside class="note">
+
+Note: There is a [The Old New Thing post](https://devblogs.microsoft.com/oldnewthing/20061222-00/?p=28623) that mentions this bug/quirk, check it out if you want some additional details
+
+</aside></p>
+
+#### The return of the meaningful comma
+
+Before, I said that string values were compiled as `NUL`-terminated UTF-16 strings, but this is only the case when either:
+- It is the last data element of a `VALUE`, or
+- There is a comma separating it from the element after it
+
+So, this:
+
+```rc
+1 VERSIONINFO {
+  VALUE "strings", "foo", "bar"
+}
+```
+
+will be compiled with a `NUL` terminator after both `foo` and `bar`, but this:
+
+```rc
+1 VERSIONINFO {
+  VALUE "strings", "foo" "bar"
+}
+```
+
+will be compiled only with a `NUL` terminator after `bar`. This is also similar to ["*Your fate will be determined by a comma*"](#your-fate-will-be-determined-by-a-comma), but unlike that comma quirk, I don't consider this one a miscompilation because the result is not invalid/mangled, and there is a possible use-case for this behavior (concatenating two or more string literals together). However, this behavior is not mentioned in the documentation, so it's unclear if it's actually intended.
+
+#### `resinator`'s behavior
+
+`resinator` avoids the length-related miscompilation and emits a warning:
+
+```resinatorerror
+test.rc:2:22: warning: the byte count of this value would be miscompiled by the Win32 RC compiler
+  VALUE "something", "foo", 123
+                     ^~~~~~~~~~
+test.rc:2:22: note: to avoid the potential miscompilation, do not mix numbers and strings within a value
+```
+
+but matches the "meaningful comma" behavior of the Windows RC compiler.
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">fundamental concept</span>
+
+### Turning off flags with `NOT` expressions
+
+Let's say you wanted to define a dialog resource with a button, but you wanted the button to start invisible. You'd do this with a `NOT` expression in the "style" parameter of the button like so:
+
+<pre><code class="language-c"><span style="opacity: 50%;">1 DIALOGEX 0, 0, 282, 239
+{</span>
+  PUSHBUTTON <span style="opacity: 50%;">"Cancel",1,129,212,50,14,</span> <span class="token_operator">NOT</span> WS_VISIBLE
+<span style="opacity: 50%;">}</span></code>
+</pre>
+
+Since `WS_VISIBLE` is set by default, this will unset it and make the button invisible. If there are any other flags that should be applied, they can be bitwise OR'd like so:
+
+<pre><code class="language-c"><span style="opacity: 50%;">1 DIALOGEX 0, 0, 282, 239
+{</span>
+  PUSHBUTTON <span style="opacity: 50%;">"Cancel",1,129,212,50,14,</span> <span class="token_operator">NOT</span> WS_VISIBLE <span class="token_operator">|</span> BS_VCENTER
+<span style="opacity: 50%;">}</span></code>
+</pre>
+
+`WS_VISIBLE` and `BS_VCENTER` are `#define`'s that stem from `WinUser.h` and are just numbers under-the-hood. For simplicity's sake, let's pretend their values are `0x1` for `WS_VISIBLE` and `0x2` for `BS_VCENTER` and then focus on this simplified `NOT` expression:
+
+<pre><code class="language-c"><span class="token_operator">NOT</span> 0x1 <span class="token_operator">|</span> 0x2</code>
+</pre>
+
+Since `WS_VISIBLE` is on by default, the default value of these flags is `0x1`, and so the resulting value is evaluated like this:
+
+<div class="not-eval">
+
+<div><i>operation</i></div>
+<div><i>binary representation of the result</i></div>
+<div><i>hex representation of the result</i></div>
+
+<div class="not-eval-border"><span><small>Default value:</small> <code>0x1</code></span></div>
+<div class="not-eval-code"><pre><code>0000 0001</code></pre></div>
+<div class="not-eval-border"><span><code>0x1</code></span></div>
+
+<div class="not-eval-border"><code><span class="token_operator">NOT</span> 0x1</code></div>
+<div class="not-eval-code"><pre><code>0000 000<span class="token_deleted">0</span></code></pre></div>
+<div class="not-eval-border"><span><code>0x0</code></span></div>
+
+<div class="not-eval-border"><code><span class="token_operator">|</span> 0x2</code></div>
+<div class="not-eval-code"><pre><code>0000 00<span class="token_addition">1</span>0</code></pre></div>
+<div class="not-eval-border"><span><code>0x2</code></span></div>
+
+</div>
+
+Ordering matters as well. If we switch the expression to:
+
+```rc
+NOT 0x1 | 0x1
+```
+
+then we end up with `0x1` as the result:
+
+<div class="not-eval">
+
+<div><i>operation</i></div>
+<div><i>binary representation of the result</i></div>
+<div><i>hex representation of the result</i></div>
+
+<div class="not-eval-border"><span><small>Default value:</small> <code>0x1</code></span></div>
+<div class="not-eval-code"><pre><code>0000 0001</code></pre></div>
+<div class="not-eval-border"><span><code>0x1</code></span></div>
+
+<div class="not-eval-border"><code><span class="token_operator">NOT</span> 0x1</code></div>
+<div class="not-eval-code"><pre><code>0000 000<span class="token_deleted">0</span></code></pre></div>
+<div class="not-eval-border"><span><code>0x0</code></span></div>
+
+<div class="not-eval-border"><code><span class="token_operator">|</span> 0x1</code></div>
+<div class="not-eval-code"><pre><code>0000 000<span class="token_addition">1</span></code></pre></div>
+<div class="not-eval-border"><span><code>0x1</code></span></div>
+
+</div>
+
+If, instead, the ordering was reversed like so:
+
+```rc
+0x1 | NOT 0x1
+```
+
+then the value at the end would be `0x0`:
+
+<div class="not-eval">
+
+<div><i>operation</i></div>
+<div><i>binary representation of the result</i></div>
+<div><i>hex representation of the result</i></div>
+
+<div class="not-eval-border"><span><small>Default value:</small> <code>0x1</code></span></div>
+<div class="not-eval-code"><pre><code>0000 0001</code></pre></div>
+<div class="not-eval-border"><span><code>0x1</code></span></div>
+
+<div class="not-eval-border"><code>0x1</code></div>
+<div class="not-eval-code"><pre><code>0000 0001</code></pre></div>
+<div class="not-eval-border"><span><code>0x1</code></span></div>
+
+<div class="not-eval-border"><code><span class="token_operator">|</span> <span class="token_operator">NOT</span> 0x1</code></div>
+<div class="not-eval-code"><pre><code>0000 000<span class="token_deleted">0</span></code></pre></div>
+<div class="not-eval-border"><span><code>0x0</code></span></div>
+
+</div>
+
+With these basic examples, `NOT` seems pretty straightforward, however...
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">utterly baffling</span>
+
+### `NOT` is incomprehensible
+
+Practically any deviation outside the simple examples outlined in [*Turning off flags with `NOT` expressions*](#turning-off-flags-with-not-expressions) leads to bizarre and inexplicable results. For example, these expressions are all accepted by the Windows RC compiler:
+
+- `NOT (1 | 2)`
+- `NOT () 2`
+- `7 NOT NOT 4 NOT 2 NOT NOT 1`
+
+The first one looks like it makes sense, as intuitively the `(1 | 2)` would be evaluated first so in theory it should be equivalent to `NOT 3`. However, if the default value of the flags is `0`, then the expression `NOT (1 | 2)` (somehow) evaluates to `2`, whereas `NOT 3` would evaluate to `0`.
+
+`NOT () 2` seems like it should obviously be a syntax error, but for whatever reason it's accepted by the Windows RC compiler and also evaluates to `2`.
+
+`7 NOT NOT 4 NOT 2 NOT NOT 1` is entirely incomprehensible, and just as incomprehensibly, it *also* results in `2` (if the default value is `0`).
+
+This behavior is so bizarre and obviously incorrect that I didn't even try to understand what's going on here, so your guess is as good as mine on this one.
+
+#### `resinator`'s behavior
+
+`resinator` only accepts `NOT <number>`, anything else is an error:
+
+```resinatorerror
+test.rc:2:13: error: expected '<number>', got '('
+  STYLE NOT () 2
+            ^
+```
+
+All 3 of the above examples lead to compile errors in `resinator`.
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk</span>
+
+### `NOT` can be used in places it makes no sense
+
+The strangeness of `NOT` doesn't end there, as the Windows RC compiler also allows it to be used in many (but not all) places that a number expression can be used.
+
+As an example, here are `NOT` expressions used in the `x`, `y`, `width`, and `height` arguments of a `DIALOGEX` resource:
+
+```rc
+1 DIALOGEX NOT 1, NOT 2, NOT 3, NOT 4
+{
+  // ...
+}
+```
+
+This doesn't necessarily cause problems, but since `NOT` is only useful in the context of turning off enabled-by-default flags of a bit flag parameter, there's no reason to allow `NOT` expressions outside of that context.
+
+However, there *is* an extra bit of weirdness involved here, since certain `NOT` expressions cause errors in some places but not others. For example, the expression `1 | NOT 2` is an error if it's used in the `type` parameter of a `MENUEX`'s `MENUITEM`, but `NOT 2 | 1` is totally accepted.
+
+```rc
+1 MENUEX {
+  // Error: numeric value expected at NOT
+  MENUITEM "bar", 101, 1 | NOT 2
+  // No error if the NOT is moved to the left of the bitwise OR
+  MENUITEM "foo", 100, NOT 2 | 1
+}
+```
+
+<p><aside class="note">
+
+Note: `1 | NOT 2` is legal in all bit flag parameters (where the use of `NOT` actually makes sense).  
+
+</aside></p>
+
+#### `resinator`'s behavior
+
+`resinator` errors if `NOT` expressions are attempted to be used outside of bit flag parameters:
+
+```resinatorerror
+test.rc:1:12: error: expected number or number expression; got 'NOT'
+1 DIALOGEX NOT 1, NOT 2, NOT 3, NOT 4
            ^~~
-test.rc:1:12: note: the presence of this codepoint causes all non-ASCII codepoints to be byteswapped by the Win32 RC preprocessor
 ```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">miscompilation, crash</span>
+
+### No one has thought about `FONT` resources for decades
+
+As far as I can tell, the `FONT` resource has exactly one purpose: creating `.fon` files, which are resource-only `.dll`s (i.e. a `.dll` with resources, but no entry point) renamed to have a `.fon` extension. Such `.fon` files contain a collection of fonts in the obsolete `.fnt` font format.
+
+The `.fon` format is mostly obsolete, but is still supported in modern Windows, and Windows *still* ships with some `.fon` files included:
+
+<div style="text-align: center;">
+<img style="margin-left:auto; margin-right:auto; display: block;" src="/images/every-rc-exe-bug-quirk-probably/windows-10-fon.png">
+<p style="margin-top: .5em;"><i class="caption">The <code>Terminal</code> font included in Windows 10 is a <code>.fon</code> file</i></p>
+</div>
+
+This `.fon`-related purpose for the `FONT` resource, however, has been irrelevant for decades, and, as far as I can tell, has not worked fully correctly since the 16-bit version of the Windows RC compiler. To understand why, though, we have to understand a little bit about the `.fnt` format.
+
+In version 1 of the `.fnt` format, specified by the [Windows 1.03 SDK from 1986](https://www.os2museum.com/files/docs/win10sdk/windows-1.03-sdk-prgref-1986.pdf), the total size of all the static fields in the header was 117 bytes, with a few fields containing offsets to variable-length data elsewhere in the file. Here's a (truncated) visualization, with some relevant 'offset' fields expanded:
+
+<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;"><span style="background: rgba(0,255,0,.1);">....version....</span>
+<span style="background: rgba(0,0,255,.1);">......size.....</span>
+<span style="background: rgba(150,0,255,.1);">...copyright...</span>
+<span style="background: rgba(0,255,0,.1);">......type.....</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">.device_offset.</span> ───► <span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">NUL-terminated device name.</span>
+<span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">..face_offset..</span> ───► <span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">NUL-terminated font face name.</span>
+<span style="background: rgba(0,255,0,.1);">....bits_ptr...</span>
+<span style="background: rgba(0,0,255,.1);">..bits_offset..</span></code></pre>
+
+In [version 3 of the `.fnt` format](https://web.archive.org/web/20080115184921/http://support.microsoft.com/kb/65123) (and presumably version 2, but I can't find much info about version 2), all of the fields up to and including `bits_offset` are the same, but there are an additional 31 bytes of new fields, making for a total size of 148 bytes:  
+
+<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;"><span style="opacity: 0.5"><span style="background: rgba(0,255,0,.1);">....version....</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(0,0,255,.1);">.device_offset.</span>
+<span style="background: rgba(150,0,255,.1);">..face_offset..</span>
+<span style="background: rgba(0,255,0,.1);">....bits_ptr...</span>
+<span style="background: rgba(0,0,255,.1);">..bits_offset..</span></span>
+<span style="background: rgba(150,0,255,.1);">....reserved...</span> ◄─┐
+<span style="background: rgba(0,255,0,.1);">.....flags.....</span> ◄─┤
+<span style="background: rgba(0,0,255,.1);">.....aspace....</span> ◄─┤
+<span style="background: rgba(150,0,255,.1);">.....bspace....</span> ◄─┼── new fields
+<span style="background: rgba(0,255,0,.1);">.....cspace....</span> ◄─┤
+<span style="background: rgba(0,0,255,.1);">...color_ptr...</span> ◄─┤
+<span style="background: rgba(150,0,255,.1);">...reserved1...</span>   │
+<span style="background: rgba(150,0,255,.1);">...............</span> ◄─┘
+<span style="background: rgba(150,0,255,.1);">...............</span></code></pre>
+
+Getting back to resource compilation, `FONT` resources within `.rc` files are collected and compiled into the following resources:
+
+- A `RT_FONT` resource for each `FONT`, where the data is the verbatim file contents of the `.fnt` file
+- A `FONTDIR` resource that contains data about each font, in the format specified by [`FONTGROUPHDR`](https://learn.microsoft.com/en-us/windows/win32/menurc/fontgrouphdr)
+  + side note: the string `FONTDIR` is the type of this resource, it doesn't have an associated integer ID like most other Windows-defined resources do
+
+Within the `FONTDIR` resource, there is a [`FONTDIRENTRY`](https://learn.microsoft.com/en-us/windows/win32/menurc/fontdirentry) for each font, containing much of the information in the `.fnt` header. In fact, the data actually matches the version 1 `.fnt` header almost exactly, with only a few differences at the end:
+
+<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;">.fnt version 1      FONTDIRENTRY
+<span></span>
+<span style="background: rgba(0,255,0,.1);">....version....</span> == <span style="background: rgba(0,255,0,.1);">...dfVersion...</span>
+<span style="background: rgba(0,0,255,.1);">......size.....</span> == <span style="background: rgba(0,0,255,.1);">.....dfSize....</span>
+<span style="background: rgba(150,0,255,.1);">...copyright...</span> == <span style="background: rgba(150,0,255,.1);">..dfCopyright..</span>
+<span style="background: rgba(0,255,0,.1);">......type.....</span> == <span style="background: rgba(0,255,0,.1);">.....dfType....</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span> == <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span> == <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(0,0,255,.1);">.device_offset.</span> == <span style="background: rgba(0,0,255,.1);">....dfDevice...</span>
+<span style="background: rgba(150,0,255,.1);">..face_offset..</span> == <span style="background: rgba(150,0,255,.1);">.....dfFace....</span>
+<span style="background: rgba(0,255,0,.1);">....bits_ptr...</span> =? <span style="background: rgba(0,255,0,.1);">...dfReserved..</span>
+<span style="background: rgba(0,0,255,.1);">..bits_offset..</span>    <span style="background: rgba(255,0,0,.1);">NUL-terminated device name.</span>
+                   <span style="background: rgba(255,150,0,.1);">NUL-terminated font face name.</span></code></pre>
+<p style="margin:0; text-align: center;"><i class="caption">The formats match, except <code>FONTDIRENTRY</code> does not include <code>bits_offset</code> and instead it has trailing variable-length strings</i></p>
+
+This documented `FONTDIRENTRY` *is* what the obsolete 16-bit version of `rc.exe` outputs: 113 bytes plus two variable-length `NUL`-terminated strings at the end. However, starting with the 32-bit resource compiler, contrary to the documentation, `rc.exe` now outputs `FONTDIRENTRY` as 148 bytes plus the two variable-length `NUL`-terminated strings.
+
+You might notice that this 148 number has come up before; it's the size of the `.fnt` version 3 header. So, starting with the 32-bit `rc.exe`, `FONTDIRENTRY` as-written-by-the-resource-compiler is effectively the first 148 bytes of the `.fnt` file, plus the two strings located at the positions given by the `device_offset` and `face_offset` fields. Or, at least, that's clearly the intention, but this is labeled 'miscompilation' for a reason.
+
+Let's take this example `.fnt` file for instance:
+
+<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;"><span style="background: rgba(0,255,0,.1);">....version....</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">.device_offset.</span> ───► <span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">some device.</span>
+<span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">..face_offset..</span> ───► <span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">some font face.</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(150,0,255,.1);">...reserved1...</span>
+<span style="background: rgba(150,0,255,.1);">...............</span>
+<span style="background: rgba(150,0,255,.1);">...............</span></code></pre>
+
+When compiled with the old 16-bit Windows RC compiler, `some device` and `some font face` are written as trailing strings in the `FONTDIRENTRY` (as expected), but when compiled with the modern `rc.exe`, both strings get written as 0-length (only a `NUL` terminator). The reason why is rather silly, so let's go through it. Here's the documented `FONTDIRENTRY` format again, this time with some annotations:
+
+<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;">      FONTDIRENTRY
+<span></span>
+-113 <span style="background: rgba(0,255,0,.1);">...dfVersion...</span> (2 bytes)
+-111 <span style="background: rgba(0,0,255,.1);">.....dfSize....</span> (4 bytes)
+-107 <span style="background: rgba(150,0,255,.1);">..dfCopyright..</span> (60 bytes)
+ -47 <span style="background: rgba(0,255,0,.1);">.....dfType....</span> (2 bytes)
+     <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+     <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+ -12 <span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">....dfDevice...</span> (4 bytes)
+  -8 <span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">.....dfFace....</span> (4 bytes)
+  -4 <span style="background: rgba(0,255,0,.1);">...dfReserved..</span> (4 bytes)</code></pre>
+<p style="margin:0; text-align: center;"><i class="caption">The numbers on the left represent the offset from the end of the <code>FONTDIRENTRY</code> data to the start of the field</i></p>
+
+It turns out that the Windows RC compiler uses the offset *from the end of `FONTDIRENTRY`* to get the values of the `dfDevice` and `dfFace` fields. This works fine when those offsets are unchanging, but, as we've seen, the Windows RC compiler now uses an undocumented `FONTDIRENTRY` definition that is is 35 bytes longer, but these hardcoded offsets were never updated accordingly. This means that the Windows RC compiler is actually attempting to read the `dfDevice` and `dfFace` fields from this part of the `.fnt` version 3 header:
+
+<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;">    <span style="background: rgba(0,255,0,.1);">....version....</span>
+    <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+    <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+    <span style="background: rgba(0,0,255,.1);">.device_offset.</span>
+    <span style="background: rgba(150,0,255,.1);">..face_offset..</span>
+    <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+    <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+-12 <span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(255,50,50,1);">...reserved1...</span> ───► <span style="background: rgba(255,0,0,.1); outline: 2px dotted rgba(255,50,50,1);">???</span>
+ -8 <span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(255,150,0,1);">...............</span> ───► <span style="background: rgba(255,150,0,.1); outline: 2px dotted rgba(255,150,0,1);">???</span>
+ -4 <span style="background: rgba(150,0,255,.1);">...............</span></code></pre>
+<p style="margin:0; text-align: center;"><i class="caption">The Windows RC compiler reads data from the <code>reserved1</code> field and interprets it as <code>dfDevice</code> and <code>dfFace</code></i></p>
+
+Because this bug happens to end up reading data from a reserved field, it's very likely for that data to just contain zeroes, which means it will try to read the `NUL`-terminated strings starting at offset `0` from the start of the file. As a second coincidence, the first field of a `.fnt` file is a `u16` containing the version, and the only versions I'm aware of are:
+
+- Version 1, `0x0100` encoded as little-endian, so the bytes at offset 0 are `00 01`
+- Version 2, `0x0200` encoded as little-endian, so the bytes at offset 0 are `00 02`
+- Version 3, `0x0300` encoded as little-endian, so the bytes at offset 0 are `00 03`
+
+In all three cases, the first byte is `0x00`, meaning attempting to read a `NUL` terminated string from offset `0` always ends up with a 0-length string for all known/valid `.fnt` versions. So, in practice, the Windows RC compiler almost always writes the trailing `szDeviceName` and `szFaceName` strings as 0-length strings.
+
+<p><aside class="note">
+
+As a final coincidence, the offset here is `-12` and `-8` only because the original `FONTDIRENTRY` definition chose to omit the `bits_offset` field from the `.fnt` version 1 format. If it contained the full `.fnt` version 1 header data, the `dfDevice` offset would have been `-16`, meaning it would have ended up interpreting the `color_ptr` field of the `.fnt` version 3 format as an offset instead, likely leading to more bogus (&gt; 0-length) strings being written to the trailing data (and therefore possibly leading to this bug being found/fixed earlier).
+
+</aside></p>
+
+This behavior can be confirmed by crafting a `.fnt` file with actual offsets to `NUL`-terminated strings within the reserved data field that the Windows RC compiler erroneously reads from:
+
+<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;"><span style="background: rgba(0,255,0,.1);">....version....</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">.device_offset.</span> ───► <span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">some device.</span>
+<span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">..face_offset..</span> ───► <span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">some font face.</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
+<span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(255,50,50,1);">...reserved1...</span> ───► <span style="background: rgba(255,0,0,.1); outline: 2px dotted rgba(255,50,50,1);">i dare you to read me.</span>
+<span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(255,150,0,1);">...............</span> ───► <span style="background: rgba(255,150,0,.1); outline: 2px dotted rgba(255,150,0,1);">you wouldn't.</span>
+<span style="background: rgba(150,0,255,.1);">...............</span></code></pre>
+
+Compiling such a `FONT` resource, we do indeed see that the strings `i dare you to read me` and `you wouldn't` are written to the `FONTDIRENTRY` for this `FONT` rather than `some device` and `some font face`.
+
+#### Does any of this even matter?
+
+Well, no, not really. The whole concept of the `FONTDIR` containing information about all the `RT_FONT` resources is something of a historical relic, likely only relevant when resources were constrained enough that having an overview of the font data all in once place allowed for optimization opportunities that made a difference.
+
+From what I can tell, though, on modern Windows, the `FONTDIR` resource is ignored entirely:
+- Linker implementations will happily link `.res` files that contain `RT_FONT` resources with no `FONTDIR` resource
+- Windows will happily load/install `.fon` files that contain `RT_FONT` resources with no `FONTDIR` resource
+
+However, there are a few caveats...
+
+#### Misuse of the `FONT` resource for non-`.fnt` fonts
+
+I'm not sure how prevalent this is, but it can be forgiven that someone might not realize that `FONT` is only intended to be used with a font format that has been obsolete for multiple decades, and try to use the `FONT` resource with a modern font format.
+
+In fact, there is one Microsoft-provided [`Windows-classic-samples`](https://github.com/microsoft/Windows-classic-samples) example program that uses `FONT` resources with `.ttf` files to include custom fonts in a program: [`Win7Samples/multimedia/DirectWrite/CustomFont`](https://github.com/microsoft/Windows-classic-samples/tree/main/Samples/Win7Samples/multimedia/DirectWrite/CustomFont). This is meant to be an example of using [the DirectWrite APIs described here](https://learn.microsoft.com/en-us/windows/win32/directwrite/custom-font-collections), but this is almost certainly a misuse of the `FONT` resource. [Other examples](https://github.com/microsoft/Windows-classic-samples/tree/main/Samples/DirectWriteCustomFontSets), however, use user-defined resource types for including `.ttf` font files, which seems like the correct choice.
+
+When using non-`.fnt` files with the `FONT` resource, the resulting `FONTDIRENTRY` will be made up of garbage, since it effectively just takes the first 148 bytes of the file and stuffs it into the `FONTDIRENTRY` format. An additional complication with this is that the Windows RC compiler will still try to read `NUL`-terminated strings using the offsets from the `dfDevice` and `dfFace` fields (or at least, where it thinks they are). These offset values, in turn, will have much more variance since the format of `.fnt` and `.ttf` are so different.
+
+This means that using `FONT` with `.ttf` files may lead to errors, since...
+
+#### "Negative" offsets lead to errors
+
+For who knows what reason, the `dfDevice` and `dfFace` values are seemingly treated as signed integers, even though they ostensibly contain an offset from the beginning of the `.fnt` file, so a negative value makes no sense. When the sign bit is set in either of these fields, the Windows RC compiler will error with:
+
+```
+fatal error RW1023: I/O error seeking in file
+```
+
+This means that, for some subset of valid `.ttf` files (or other non-`.fnt` font formats), the Windows RC compiler will fail with this error.
+
+#### Other oddities and crashes
+
+- If the font file is 140 bytes or fewer, the Windows RC compiler seems to default to a `dfFace` of `0` (as the [incorrect] location of the `dfFace` field is past the end of the file).
+- If the file is 75 bytes or smaller with no `0x00` bytes, the `FONTDIR` data for it will be 149 bytes (the first `n` being the bytes from the file, then the rest are `0x00` padding bytes). After that, there will be `n` bytes from the file again, and then a final `0x00`.
+- If the file is between 76 and 140 bytes long with no `0x00` bytes, the Windows RC compiler will crash.
+
+#### `resinator`'s behavior
+
+I'm still not quite sure what the best course of action is here. I've [written up what I see as the possibilities here](https://squeek502.github.io/resinator/windows/resources/font.html#so-really-what-should-go-in-the-fontdir), and for now I've gone with what I'm calling the "semi-compatibility while avoiding the sharp edges" approach:
+
+> Do something similar enough to the Win32 compiler in the common case, but avoid emulating the buggy behavior where it makes sense. That would look like a `FONTDIRENTRY` with the following format:
+>
+> - The first 148 bytes from the file verbatim, with no interpretation whatsoever, followed by two `NUL` bytes (corresponding to 'device name' and 'face name' both being zero length strings)
+>
+> This would allow the `FONTDIR` to match byte-for-byte with the Win32 RC compiler in the common case (since very often the misinterpreted `dfDevice`/`dfFace` will be `0` or point somewhere outside the bounds of the file and therefore will be written as a zero-length string anyway), and only differ in the case where the Win32 RC compiler writes some bogus string(s) to the `szDeviceName`/`szFaceName`.
+>
+> This also enables the use-case of non-`.FNT` files without any loose ends.
+
+In short: write the new/undocumented `FONTDIRENTRY` format, but avoid the crashes, avoid the negative integer-related errors, and always write `szDeviceName` and `szFaceName` as 0-length.
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">fundamental concept</span>
+
+### The involvement of a C/C++ preprocessor
+
+In the intro, I said:
+
+> `.rc` files are scripts that contain both **C/C++ preprocessor commands** and resource definitions.
+
+So far, I've only focused on resource definitions, but the involvement of the C/C++ preprocessor cannot be ignored. From the [About Resource Files](https://learn.microsoft.com/en-us/windows/win32/menurc/about-resource-files) documentation:
+
+> The syntax and semantics for the RC preprocessor are similar to those of the Microsoft C/C++ compiler. However, RC supports a subset of the preprocessor directives, defines, and pragmas in a script.
+
+The primary use-case for this is two-fold:
+
+- Inclusion of C/C++ headers within a `.rc` file to pull in constants, e.g. `#include <windows.h>` to allow usage of [window style constants](https://learn.microsoft.com/en-us/windows/win32/winmsg/window-styles) like `WS_VISIBLE`, `WS_BORDER`, etc.
+- Being able to share a `.h` file between your `.rc` file and your C/C++ source files, where the `.h` file contains things like the IDs of various resources.
+
+Here's some snippets that demonstrate both use-cases:
+
+```c
+// in resource.h
+#define DIALOG_ID 123
+#define BUTTON_ID 234
+```
+```rc
+// in resource.rc
+#include <windows.h>
+#include "resource.h"
+
+// DIALOG_ID comes from resource.h
+DIALOG_ID DIALOGEX 0, 0, 282, 239
+  // These style constants come from windows.h
+  STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+  CAPTION "Dialog"
+{
+  // BUTTON_ID comes from resource.h
+  PUSHBUTTON "Button", BUTTON_ID, 129, 182, 50, 14
+}
+```
+```c
+// in main.c
+#include <windows.h>
+#include "resource.h"
+
+// ...
+  // DIALOG_ID comes from resource.h
+  HWND result = CreateDialogParamW(hInst, MAKEINTRESOURCEW(DIALOG_ID), hwnd, DialogProc, (LPARAM)NULL);
+// ...
+
+// ...
+  // BUTTON_ID comes from resource.h
+  HWND button = GetDlgItem(hwnd, BUTTON_ID);
+// ...
+```
+
+With this setup, changing `DIALOG_ID`/`BUTTON_ID` in `resource.h` affects both `resource.rc` and `main.c`, so they are always kept in sync.
+
+<p><aside class="note">
+
+Note: Knowing all of the particularities of the resource-compiler-flavored-preprocessor isn't important for now. If you're curious, see the docs for [Predefined Macros](https://learn.microsoft.com/en-us/windows/win32/menurc/predefined-macros), [Preprocessor Directives](https://learn.microsoft.com/en-us/windows/win32/menurc/preprocessor-directives), [Preprocessor Operators](https://learn.microsoft.com/en-us/windows/win32/menurc/preprocessor-operators), and [Pragma Directives](https://learn.microsoft.com/en-us/windows/win32/menurc/pragma-directives) for the documented capabilties of the Windows RC compiler's preprocessor.
+
+</aside></p>
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">preprocessor bug/quirk, parser bug/quirk</span>
+
+### Multiline strings don't behave as expected/documented
+
+Within the [`STRINGTABLE` resource documentation](https://learn.microsoft.com/en-us/windows/win32/menurc/stringtable-resource) we see this statement:
+
+> The string [...] must occupy a single line in the source file (unless a '&bsol;' is used as a line continuation).
+
+<p><aside class="note">
+
+Note: While this documentation is for `STRINGTABLE`, it actually applies to string literals in `.rc` files generally. In other words, there's nothing special about how `STRINGTABLE` handles string literals, and the bugs/quirks described below apply to all resource types.
+
+</aside></p>
+
+This is similar to the rules around C strings:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; justify-content: center; flex-grow: 1; margin-top: 0;"
+char *my_string = "Line 1
+Line 2";
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```resinatorerror style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+multilinestring.c:1:19: error: missing terminating '"' character
+char *my_string = "Line 1
+                  ^
+```
+
+</div>
+</div>
+
+<p style="margin-top: 0; text-align: center;"><i class="caption">Splitting a string across multiple lines without using <code>&bsol;</code> is an error in C</i></p>
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-direction: column; justify-content: center; flex-grow: 1; margin-top: 0;"
+char *my_string = "Line 1 \
+Line 2";
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<p style="margin-top: 0; margin-bottom: .5em;"><code>printf("%s\n", my_string);</code> results in:</p>
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+Line 1 Line 2
+```
+
+</div>
+</div>
+
+And yet, contrary to the documentation, splitting a string across multiple lines without `\` continuations *is not an error* in the Windows RC compiler. Here's an example:
+
+```rc
+1 RCDATA {
+
+"foo
+bar"
+
+}
+```
+
+This will successfully compile, and the data of the `RCDATA` resource will end up as
+
+<pre style="overflow: visible; padding-top: 3.5em; padding-bottom: 3.5em;"><code class="language-none"><span class="token_string">66 6F 6F</span> <span style="outline: 2px dotted orange;">20</span> <span style="outline: 2px dotted red;">0A</span> <span class="token_string">62 61 72</span>   <span class="token_string">foo</span><span style="outline: 2px dotted orange; position:relative; display:inline-block;"> <span class="hexdump-tooltip below">space<i></i></span></span><span style="outline: 2px dotted red; position:relative; display:inline-block;">.<span class="hexdump-tooltip">\n<i></i></span></span><span class="token_string">bar</span></code></pre>
+
+I'm not sure why this is allowed, and I also don't have an explanation for why a space character sneaks into the resulting data out of nowhere. It's also worth noting that whitespace is collapsed in these should-be-invalid multiline strings. For example, this:
+
+```rc
+"foo
+
+    bar"
+```
+
+will get compiled into exactly the same data as above (with only a space and a newline between `foo` and `bar`).
+
+</aside></p>
+
+But, this on its own is only a minor nuisance from the perspective of implementing a resource compiler&mdash;it is undocumented behavior, but it's pretty easy to account for. The real problems start when someone actually uses `\` as intended.
+
+#### The collapse of whitespace is imminent
+
+C pop quiz: what will get printed in this example (i.e. what will `my_string` evaluate to)?
+
+```c
+char *my_string = "Line 1 \
+                   Line 2";
+
+#include <stdio.h>
+
+int main() {
+  printf("%s\n", my_string);
+  return 0;
+}
+```
+
+Let's compile it with a few different compilers to find out:
+
+```shellsession
+> zig run multilinestring.c -lc
+Line 1                    Line 2
+
+> clang multilinestring.c
+> a.exe
+Line 1                    Line 2
+
+> cl.exe multilinestring.c
+> multilinestring.exe
+Line 1                    Line 2
+```
+
+That is, the whitespace preceding "Line 2" is included in the string literal.
+
+<p><aside class="note">
+
+Note: In most C compiler implementations, the `\` is processed and removed during the preprocessing step. For example, here's the result when running the input through the `clang` preprocessor:
+
+```shellsession
+> clang -E -xc multilinestring.c
+# 1 "multilinestring.c" 2
+char *my_string = "Line 1                    Line 2";
+```
+
+Something odd, though, is that this is not how the MSVC compiler works. When running its preprocessor, we end up with this:
+
+```shellsession
+> cl.exe /E multilinestring.c
+#line 1 "multilinestring.c"
+char *my_string = "Line 1 \
+                   Line 2";
+```
+
+so in the MSVC implementation, it's up to the C parser to handle the `\`. This is not fully relevant to the Windows RC compiler, but it was surprising to me.
+
+</aside></p>
+
+However, the Windows RC compiler behaves differently here. If we pass the same example through *its* preprocessor, we end up with:
+
+```c
+#line 1 "multilinestring.c"
+char *my_string = "Line 1 \
+Line 2";
+```
+
+1. The `\` remains (similar to the MSVC compiler, see the note above)
+2. The whitespace before "Line 2" is removed
+
+So the value of `my_string` would be `Line 1 Line 2` (well, not really, since `char *my_string = ` doesn't have a meaning in `.rc` files, but you get the idea). This divergence in behavior from C has practical consequences: in [this `.rc` file](https://github.com/microsoft/Windows-classic-samples/blob/main/Samples/Win7Samples/winui/shell/appshellintegration/NonDefaultDropMenuVerb/NonDefaultDropMenuVerb.rc) from one of the [Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples) example programs, we see the following, which takes advantage of the `rc.exe`-preprocessor-specific-whitespace-collapsing behavior:
+
+```rc
+STRINGTABLE 
+BEGIN
+    // ...
+    IDS_MESSAGETEMPLATEFS   "The drop target is %s.\n\
+                            %d files/directories in HDROP\n\
+                            The path to the first object is\n\
+                            \t%s."
+    // ...
+END
+```
+
+Plus, in certain circumstances, this difference between `rc.exe` and C (like [other differences to C](#all-operators-have-equal-precedence)) can lead to bugs. This is a rather contrived example, but here's one way things could go wrong:
+
+```c
+// In foo.h
+#define FOO_TEXT "foo \
+                  bar"
+#define IDC_BUTTON_FOO 1001
+```
+```rc
+// In foo.rc
+#include "foo.h"
+
+1 DIALOGEX 0, 0, 275, 280
+BEGIN
+    PUSHBUTTON FOO_TEXT, IDC_BUTTON_FOO, 7, 73, 93, 14
+END
+```
+```c
+// In main.c
+#include "foo.h"
+
+// ...
+    HWND hFooBtn = GetDlgItem(hDlg, IDC_BUTTON_FOO);
+    // Let's say the button text was changed while it was hovered
+    // and now we want to set it back to the default
+    SendMessage(hFooBtn, WM_SETTEXT, 0, (LPARAM) _T(FOO_TEXT));
+// ...
+```
+
+In this example, the button defined in the `DIALOGEX` would start with the text `foo bar`, since that is the value that the Windows RC compiler resolves `FOO_TEXT` to be, but the `SendMessage` call would then set the text to <code>foo&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;bar</code>, since that's what the C compiler resolves `FOO_TEXT` to be.
+
+#### `resinator`'s behavior
+
+`resinator` uses the [Aro preprocessor](https://github.com/Vexu/arocc), which means it acts like a C compiler. In the future, `resinator` will likely fork Aro ([mostly to support UTF-16 encoded files](https://github.com/squeek502/resinator/issues/5)), which could allow matching the behavior of `rc.exe` in this case as well.
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk, utterly baffling</span>
+
+### Escaping quotes is fraught
+
+Again rom the [`STRINGTABLE` resource docs](https://learn.microsoft.com/en-us/windows/win32/menurc/stringtable-resource):
+
+> To embed quotes in the string, use the following sequence: `""`. For example, `"""Line three"""` defines a string that is displayed as follows:
+> ```
+> "Line three"
+> ```
+
+This is different from C, where `\"` is used to escape quotes within a string literal, so in C to get `"Line three"` you'd do `"\"Line three\""`.
+
+<p><aside class="note">
+
+Note: I have no idea why the method for quote escaping would differ from C. The only thing I can think of is that it would allow for the use of `\` within string literals in order to make specifying paths in string literals more convenient, but that can't be true because in e.g.
+
+```c
+"some\new\path"
+```
+
+the `\n` gets parsed into `0x0A`.
+
+</aside></p>
+
+This difference, though, can lead to some really bizarre results, since the preprocessor *still uses the C escaping rules*. Take this simple example:
+
+```none
+"\""BLAH"
+```
+
+Here's how that is seen from the perspective of the preprocessor:
+
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">string<i></i></span><span class="subject"><span class="token_string">"\""</span></span></span><span class="annotation"><span class="desc">identifier<i></i></span><span class="subject"><span class="token_identifier">BLAH</span></span></span><span class="annotation"><span class="desc">string (unfinished)<i></i></span><span class="subject"><span class="token_string">"</span></span></span></code></pre>
+
+And from the perspective of the compiler:
+
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">string<i></i></span><span class="subject"><span class="token_string">"\""BLAH"</span></span></span></code></pre>
+
+So, following from this, say you had this `.rc` file:
+
+```rc
+#define BLAH "hello"
+
+1 RCDATA { "\""BLAH" }
+```
+
+Since we know the preprocessor sees `BLAH` as an identifier and we've done `#define BLAH "hello"`, it will replace `BLAH` with `"hello"`, leading to this result:
+
+```rc
+1 RCDATA { "\"""hello"" }
+```
+
+which would now be parsed by the compiler as:
+
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">string<i></i></span><span class="subject"><span class="token_string">"\"""</span></span></span><span class="annotation"><span class="desc">identifier<i></i></span><span class="subject"><span class="token_identifier">hello</span></span></span><span class="annotation"><span class="desc">string<i></i></span><span class="subject"><span class="token_string">""</span></span></span></span></span></span></code></pre>
+
+and lead to a compile error:
+
+```
+test.rc(3) : error RC2104 : undefined keyword or key name: hello
+```
+
+This is just one example, but the general disagreement around escaped quotes between the preprocessor and the compiler can lead to some really unexpected error messages.
+
+#### Wait, but what actually happens to the backslash?
+
+Backing up a bit, I said that the compiler sees `"\""BLAH"` as one string literal token, so:
+
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;">1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span> <span class="annotation"><span class="desc">string<i></i></span><span class="subject"><span class="token_string" style="outline: 2px dotted rgba(150,150,150,0.5)">"\""BLAH"</span></span></span> <span class="token_punctuation">}</span></code></pre>
+
+If we compile this, then the data of this `RCDATA` resource ends up as:
+
+```
+"BLAH
+```
+
+That is, the `\` fully drops out and the `""` is treated as an escaped quote. This seems to some sort of special case, as this behavior is not present for other unrecognized escape sequences, e.g. `"\k"` will end up as `\k` when compiled, and `"\"` will end up as `\`.
+
+
+#### `resinator`'s behavior
+
+Using `\"` within string literals is always an error, since (as mentioned) it can lead to things like unexpected macro expansions and hard-to-understand errors when the preprocessor and the compiler disagree.
+
+```resinatorerror
+test.rc:1:13: error: escaping quotes with \" is not allowed (use "" instead)
+1 RCDATA { "\""BLAH" }
+            ^~
+```
+
+This may change if it turns out `\"` is commonly used in the wild, but that seems unlikely to be the case.
 
 </div>
 
@@ -1254,6 +2054,165 @@ test.rc:2:4: warning: the tab character(s) in this string will be converted into
    " "
    ^~~
 test.rc:2:4: note: to include the tab character itself in a string, the escape sequence \t should be used
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">fundamental concept</span>
+
+### The Windows RC compiler 'speaks' UTF-16
+
+`.rc` files are compiled in two distinct steps:
+
+1. First, they are run through a C/C++ preprocessor (`rc.exe` has a preprocessor implementation built-in)
+2. The result of the preprocessing step is then compiled into a `.res` file
+
+In addition to [a subset of the normal C/C++ preprocessor directives](https://learn.microsoft.com/en-us/windows/win32/menurc/preprocessor-directives), there is one resource-compiler-specific [`#pragma code_page` directive](https://learn.microsoft.com/en-us/windows/win32/menurc/pragma-directives) that allows changing which code page is active mid-file. This means that `.rc` files can *have a mixture of encodings* within a single file:
+
+```rc
+#pragma code_page(1252) // 1252 = Windows-1252
+1 RCDATA { "This is interpreted as Windows-1252: €" }
+
+#pragma code_page(65001) // 65001 = UTF-8
+2 RCDATA { "This is interpreted as UTF-8: €" }
+```
+
+If the above example file is saved as [Windows-1252](https://en.wikipedia.org/wiki/Windows-1252), each `€` is encoded as the byte `0x80`, meaning:
+- The `€` (`0x80`) in the `RCDATA` with ID `1` will be interpreted as a `€`
+- The `€` (`0x80`) in the `RCDATA` with ID `2` will attempt to be interpreted as UTF-8, but `0x80` is an invalid start byte for a UTF-8 sequence, so it will be replaced during preprocessing with the Unicode replacement character (� or `U+FFFD`)
+
+So, if we run the Windows-1252-encoded file through only the `rc.exe` preprocessor (using the [undocumented `rc.exe /p` option](#p-okay-i-ll-only-preprocess-but-you-re-not-going-to-like-it)), the result is a file with the following contents:
+
+```rc
+#pragma code_page 1252
+1 RCDATA { "This is interpreted as Windows-1252: €" }
+
+#pragma code_page 65001
+2 RCDATA { "This is interpreted as UTF-8: �" }
+```
+
+<p><aside class="note">
+
+Note: In reality, the preprocessor also adds `#line` directives, but those have been omitted for clarity.
+
+</aside></p>
+
+If, instead, the example file is saved as [UTF-8](https://en.wikipedia.org/wiki/UTF-8), each `€` is encoded as the byte sequence `0xE2 0x82 0xAC`, meaning:
+- The `€` (`0xE2 0x82 0xAC`) in the `RCDATA` with ID `1` will be interpreted as `â‚¬`
+- The `€` (`0xE2 0x82 0xAC`) in the `RCDATA` with ID `2` will be interpreted as `€`
+
+So, if we run the UTF-8-encoded version through the `rc.exe` preprocessor, the result looks like this:
+
+```rc
+#pragma code_page 1252
+1 RCDATA { "This is interpreted as Windows-1252: â‚¬" }
+
+#pragma code_page 65001
+2 RCDATA { "This is interpreted as UTF-8: €" }
+```
+
+In both of these examples, the result of the `rc.exe` preprocessor is encoded as UTF-16. This is because, in the Windows RC compiler, the relevant code page interpretation is done during preprocessing, and the output of the preprocessor is *always* UTF-16. This, in turn, means that the parser/compiler of the Windows RC compiler *always* ingests UTF-16, as there's no option to skip the preprocessing step.
+
+This will be relevant for future bugs/quirks, so just file this knowledge away for now.
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">preprocessor bug/quirk</span>
+
+### Extreme `#pragma code_page` values
+
+The resource-compiler-specific preprocessor directive `#pragma code_page` can be used to alter the [code page](https://en.wikipedia.org/wiki/Code_page) used mid-file. It's used like so:
+
+```rc
+#pragma code_page(1252) // Windows-1252
+// ... bytes from now on are interpreted as Windows-1252 ...
+
+#pragma code_page(65001) // UTF-8
+// ... bytes from now on are interpreted as UTF-8 ...
+```
+
+The list of possible code pages [can be found here](https://learn.microsoft.com/en-us/windows/win32/intl/code-page-identifiers). If you try to use one that is not valid, `rc.exe` will error with:
+
+```
+fatal error RC4214: Codepage not valid:  ignored
+```
+
+But what happens if you try to use an extremely large code page value (greater or equal to the max of a `u32`)? Most of the time it errors in the same way as above, but occasionally there's a strange / inexplicable error. Here's a selection of a few:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+#pragma code_page(4294967296)
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+error RC4212: Codepage not integer:  )
+fatal error RC1116: RC terminating after preprocessor errors
+```
+
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+#pragma code_page(4295032296)
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+fatal error RC22105: MultiByteToWideChar failed.
+```
+
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
+#pragma code_page(4295032297)
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
+test.rc(2) : error RC2177: constant too big
+test.rc(2) : error RC4212: Codepage not integer:  4
+fatal error RC1116: RC terminating after preprocessor errors
+```
+
+</div>
+</div>
+
+I don't have an explanation for this behavior, especially with regards to why only certian extreme values induce an error at all.
+
+#### `resinator`'s behavior
+
+`resinator` treats code pages exceeding the max of a `u32` as a fatal error.
+
+```resinatorerror
+test.rc:1:1: error: code page too large in #pragma code_page
+#pragma code_page ( 4294967296 )
+^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+```
+
+This is a separate error from the one caused by invalid/unsupported code pages:
+
+```resinatorerror
+test.rc:1:1: error: invalid or unknown code page in #pragma code_page
+#pragma code_page ( 64999 )
+^~~~~~~~~~~~~~~~~~~~~~~~~~~
+```
+
+```resinatorerror
+test.rc:1:1: error: unsupported code page 'utf7 (id=65000)' in #pragma code_page
+#pragma code_page ( 65000 )
+^~~~~~~~~~~~~~~~~~~~~~~~~~~
 ```
 
 </div>
@@ -1374,7 +2333,7 @@ STRINGTABLE {
 }
 ```
 
-The `"Hello"` and `"Goodbye"` strings will be grouped together into one resource, and the `"Hm"` will be put into another. Each group is written as a series of 16 length integers (one for each string within the group), and each length is immediately followed by a UTF-16 encoded string of that length (if the length is non-zero). So, for example, the first group contains the strings with IDs 0-15, so, in the above example, the first group would be compiled as:
+The `"Hello"` and `"Goodbye"` strings will be grouped together into one resource, and the `"Hm"` will be put into another. Each group is written as a series of 16 length integers (one for each string within the group), and each length is immediately followed by a UTF-16 encoded string of that length (if the length is non-zero). So, for example, the first group contains the strings with IDs 0-15, so, for the `.rc` file above, the first group would be compiled as:
 
 <pre class="hexdump"><code><span class="o1d o-clr3 infotip" title="Length of string ID 0">05 00</span> <span class="bg-clr3 o1s o-clr3">48 00 65 00 6C 00</span>  <span class="o1d o-clr3">..</span><span class="bg-clr3 o1s o-clr3">H.e.l.</span>
 <span class="bg-clr3 o1s o-clr3">6C 00 6F 00</span> <span class="o1d o-clr4 infotip" title="Length of string ID 1">07 00</span> <span class="bg-clr4 o1s o-clr4">47 00</span>  <span class="bg-clr3 o1s o-clr3">l.o.</span><span class="o1d o-clr4">..</span><span class="bg-clr4 o1s o-clr4">G.</span>
@@ -1387,7 +2346,7 @@ The `"Hello"` and `"Goodbye"` strings will be grouped together into one resource
 
 Internally, `STRINGTABLE` resources get compiled as the integer resource type `RT_STRING`, which is 6. The ID of the resource is based on the grouping, so strings with IDs 0-15 go into a `RT_STRING` resource with ID 1, 16-31 go into a resource with ID 2, etc.
 
-The above is all well and good, but what happens if you *manually* define a resource with the `RT_STRING` type of 6? The Windows RC compiler has no qualms with that at all, and compiles it similarly to a user-defined resource, so the resource's data will be 3 bytes long, containing `foo`:
+The above is all well and good, but what happens if you *manually* define a resource with the `RT_STRING` type of 6? The Windows RC compiler has no qualms with that at all, and compiles it similarly to a user-defined resource, so the data of the resource below will be 3 bytes long, containing `foo`:
 
 ```rc
 1 6 {
@@ -1407,7 +2366,7 @@ if (len != 0) {
 }
 ```
 
-will output:
+That code will output:
 
 ```
 len: 1023
@@ -1465,7 +2424,7 @@ This is because, in order to load a string with ID 1, the bytes of the string wi
 
 <p><aside class="note">
 
-Note: Resources get compiled into a tree structure when linked into a PE/COFF binary, and that format is not something I'm familiar with ([yet](https://github.com/squeek502/resinator/issues/7)). My first impression, though, is that this crash seems like a bug in `LoadString`; if possible, it probably should be doing some bounds checking to avoid attempting to read past the end of the resource data.
+Note: My first impression is that this crash is a bug in `LoadString`, in that it probably should be doing some bounds checking to avoid attempting to read past the end of the resource data. However, resources get compiled into a different (tree) structure when linked into a PE/COFF binary, and that format is not something I'm familiar with ([yet](https://github.com/squeek502/resinator/issues/7)), so there may be something I'm missing about why bounds checking is seemingly not occuring.
 
 </aside></p>
 
@@ -1476,6 +2435,67 @@ test.rc:1:3: error: the number 6 (RT_STRING) cannot be used as a resource type
 1 6 {
   ^
 test.rc:1:3: note: using RT_STRING directly likely results in an invalid .res file, use a STRINGTABLE instead
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk, utterly baffling</span>
+
+### `CONTROL`: "I'm just going to pretend I didn't see that"
+
+Within `DIALOG`/`DIALOGEX` resources, there are predefined controls like `PUSHBUTTON`, `CHECKBOX`, etc, which are actually just syntactic sugar for generic `CONTROL` statements with particular default values for the "class name" and "style" parameters.
+
+For example, these two statements are equivalent:
+
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">class<i></i></span><span class="subject"><span class="token_keyword">CHECKBOX</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">text<i></i></span><span class="subject"><span class="token_string">"foo"</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">id<i></i></span><span class="subject">1</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">x<i></i></span><span class="subject">2</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">y<i></i></span><span class="subject">3</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">w<i></i></span><span class="subject">4</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">h<i></i></span><span class="subject">5</span></span></code></pre>
+
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">class<i></i></span><span class="subject"><span class="token_keyword">CONTROL</span></span></span><span class="token_punctuation">,</span> <span class="token_string">"foo"</span><span class="token_punctuation">,</span> 1<span class="token_punctuation">,</span> <span class="annotation"><span class="desc">class name<i></i></span><span class="subject"><span class="token_keyword">BUTTON</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">style<i></i></span><span class="subject"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span></span></span><span class="token_punctuation">,</span> 2<span class="token_punctuation">,</span> 3<span class="token_punctuation">,</span> 4<span class="token_punctuation">,</span> 5</code></pre>
+
+There is something bizarre about the "style" parameter of a generic control statement, though. For whatever reason, it allows an extra token within it and will act as if it doesn't exist.
+
+<pre style="margin-top: 3em; overflow: visible; white-space: pre-wrap;"><code class="language-c" style="white-space: inherit;"><span style="opacity:50%;">CONTROL, "text", 1, BUTTON,</span> <span style="outline:2px dotted blue; position:relative; display:inline-block;"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span> <span class="token_string">"why is this allowed"</span><span class="hexdump-tooltip rcdata">style<i></i></span></span><span style="opacity: 50%;">, 2, 3, 4, 5</span></code></pre>
+
+The `"why is this allowed"` string is completely ignored, and this `CONTROL` will be compiled exactly the same as the previous `CONTROL` statement shown above.
+
+<p><aside class="note">
+
+- This bug/quirk requires there to be no comma before the extra token. In the above example, if there is a comma between the `BS_CHECKBOX | WS_TABSTOP` and the `"why is this allowed"`, then it will (properly) error with `expected numerical dialog constant`
+- This bug/quirk is specific to the `style` parameter of `CONTROL` statements. In non-generic controls, the style parameter is optional and comes after the `h` parameter, but it does not exhibit this behavior
+
+</aside></p>
+
+The extra token can be many things (string, number, `=`, etc), but not *anything*. For example, if the extra token is `;`, then it will error with `expected numerical dialog constant`.
+
+#### `CONTROL`: "Okay, I see that expression, but I don't understand it"
+
+Instead of a single extra token in the `style` parameter of a `CONTROL`, it's also possible to sneak an extra number expression in there like so:
+
+<pre style="margin-top: 3em; overflow: visible; white-space: pre-wrap;"><code class="language-c" style="white-space: inherit;"><span style="opacity:50%;">CONTROL, "text", 1, BUTTON,</span> <span style="outline:2px dotted blue; position:relative; display:inline-block;"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span> <span class="token_punctuation">(</span>7<span class="token_operator">+</span>8<span class="token_punctuation">)</span><span class="hexdump-tooltip rcdata">style<i></i></span></span><span style="opacity: 50%;">, 2, 3, 4, 5</span></code></pre>
+
+In this case, the Windows RC compiler no longer ignores the expression, but still behaves strangely. Instead of the entire `(7+8)` expression being treated as the `x` parameter like you might expect, in this case *only the* `8` in the expression is treated as the `x` parameter, so it ends up interpreted like this:
+
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span style="opacity:50%;">CONTROL, "text", 1, BUTTON,</span> <span class="annotation"><span class="desc">style<i></i></span><span class="subject"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span></span></span> <span style="opacity:50%;">(7+</span><span class="annotation"><span class="desc">x<i></i></span><span class="subject">8</span></span><span style="opacity:50%;">)</span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">y<i></i></span><span class="subject">2</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">w<i></i></span><span class="subject">3</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">h<i></i></span><span class="subject">4</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">exstyle<i></i></span><span class="subject">5</span></span></code></pre>
+
+My guess is that the similarity between this number-expression-related-behavior and ["*Number expressions as filenames*"](#number-expressions-as-filenames) is not a coincidence, but beyond that I couldn't tell you what's going on here.
+
+#### `resinator`'s behavior
+
+Such extra tokens/expressions are never ignored by `resinator`; they are always treated as the `x` parameter, and a warning is emitted if there is no comma between the `style` and `x` parameters.
+
+```resinatorerror
+test.rc:4:57: warning: this token could be erroneously skipped over by the Win32 RC compiler
+  CONTROL, "text", 1, BUTTON, 0x00000002L | 0x00010000L "why is this allowed", 2, 3, 4, 5
+                                                        ^~~~~~~~~~~~~~~~~~~~~
+test.rc:4:57: note: this line originated from line 4 of file 'test.rc'
+  CONTROL, "text", 1, BUTTON, BS_CHECKBOX | WS_TABSTOP "why is this allowed", 2, 3, 4, 5
+
+test.rc:4:31: note: to avoid the potential miscompilation, consider adding a comma after the style parameter
+  CONTROL, "text", 1, BUTTON, 0x00000002L | 0x00010000L "why is this allowed", 2, 3, 4, 5
+                              ^~~~~~~~~~~~~~~~~~~~~~~~~
+test.rc:4:57: error: expected number or number expression; got '"why is this allowed"'
+  CONTROL, "text", 1, BUTTON, 0x00000002L | 0x00010000L "why is this allowed", 2, 3, 4, 5
+                                                        ^~~~~~~~~~~~~~~~~~~~~
 ```
 
 </div>
@@ -1648,11 +2668,11 @@ If such a value is a number, then it's compiled as a pair of `u16` values: `0xFF
 FF FF 80 00  ....
 ```
 
-Getting back to this example:
+The above (`FF FF 80 00`) is what `BUTTON` gets compiled into, since `BUTTON` gets translated to the integer `0x80` under-the-hood. However, getting back to this example:
 
 <pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="token_keyword">CONTROL</span><span class="token_punctuation">,</span> <span class="token_string">"foo"</span><span class="token_punctuation">,</span> 1<span class="token_punctuation">,</span> <span class="annotation"><span class="desc">class name<i></i></span><span class="subject"><span class="token_identifier">0x80</span></span></span><span class="token_punctuation">,</span> <span class="token_identifier">1</span><span class="token_punctuation">,</span> 2<span class="token_punctuation">,</span> 3<span class="token_punctuation">,</span> 4<span class="token_punctuation">,</span> 5</code></pre>
 
-We should expect the `0x80` gets compiled into `FF FF 80 00` (and indeed this is what happens if you specify the control class name as `BUTTON`), but instead the Windows RC compiler compiles it into:
+We should expect the `0x80` also gets compiled into `FF FF 80 00`, but instead the Windows RC compiler compiles it into:
 
 ```
 80 FF 00 00
@@ -1681,7 +2701,7 @@ Some examples:
       etc
 ```
 
-I only have the faintest idea of what could be going on here. My guess is that this is some sort of half-baked leftover behavior from the 16-bit resource compiler that never got properly updated in the move to the 32-bit compiler, since in the 16-bit version of `rc.exe`, numbers were compiled as `FF <number as u8>` instead of `FF FF <number as u16>`. However, the result we see doesn't fully match what we'd expect if that were the case&mdash;instead of `FF 80`, we get `80 FF`
+I only have the faintest idea of what could be going on here. My guess is that this is some sort of half-baked leftover behavior from the 16-bit resource compiler that never got properly updated in the move to the 32-bit compiler, since in the 16-bit version of `rc.exe`, numbers were compiled as `FF <number as u8>` instead of `FF FF <number as u16>`. However, the result we see doesn't fully match what we'd expect if that were the case&mdash;instead of `FF 80`, we get `80 FF`, so I don't think this explanation holds up.
 
 <p><aside class="note">
 
@@ -1707,7 +2727,7 @@ test.rc:2:22: note: to avoid the potential miscompilation, consider specifying t
 
 ### `CONTROL` class specified as a string literal
 
-I said in ["*`CONTROL` class specified as a string literal*"](#control-class-specified-as-a-string-literal) that `class name` can be specified as a particular set of unquoted identifiers (`BUTTON`, `EDIT`, `STATIC`, etc). I left out that it's also possible to specify them as quoted string literals&mdash;these are equivalent to the unquoted `BUTTON` class name:
+I said in ["*`CONTROL` class specified as a number*"](#control-class-specified-as-a-number) that `class name` can be specified as a particular set of unquoted identifiers (`BUTTON`, `EDIT`, `STATIC`, etc). I left out that it's also possible to specify them as quoted string literals&mdash;these are equivalent to the unquoted `BUTTON` class name:
 
 <pre><code class="language-rc"><span style="opacity:0.5">CONTROL, "foo", 1, </span><span class="token_string">"BUTTON"</span><span style="opacity:0.5">, 1, 2, 3, 4, 5</span>
 <span style="opacity:0.5">CONTROL, "foo", 1, </span>L<span class="token_string">"BUTTON"</span><span style="opacity:0.5">, 1, 2, 3, 4, 5</span></code></pre>
@@ -1747,7 +2767,7 @@ For class name strings that do not parse into one of the predefined classes (`BU
 </div>
 </div>
 
-However, if you use a `L` prefixed string that starts with a `\xFFFF` escape, then the value is written as if it were a number (i.e. the value is always 32-bits long and has the format `FF FF <number as u16>`). Here's an example:
+However, if you use an `L` prefixed string that starts with a `\xFFFF` escape, then the value is written as if it were a number (i.e. the value is always 32-bits long and has the format `FF FF <number as u16>`). Here's an example:
 
 <div class="gets-parsed-as">
 <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
@@ -1840,494 +2860,6 @@ which is *indistinguisable* from the compiled form of the class name specified a
 </div>
 
 <div class="bug-quirk-box">
-<span class="bug-quirk-category">miscompilation</span>
-
-### Mismatch in length units in `VERSIONINFO` nodes
-
-A `VALUE` within a `VERSIONINFO` resource is specified using this syntax:
-
-```rc
-VALUE <name>, <value(s)>
-```
-
-The `value(s)` can be specified as either number literals or quoted string literals, like so:
-
-```rc
-1 VERSIONINFO {
-  VALUE "numbers", 123, 456
-  VALUE "strings", "foo", "bar"
-}
-```
-
-Each `VALUE` is compiled into a structure that contains the length of its value data, but the unit used for the length varies:
-
-- For strings, the string data is written as UTF-16, and the length is given in UTF-16 code units (2 bytes per code unit)
-- For numbers, the numbers are written either as `u16` or `u32` (depending on the presence of an `L` suffix), and the length is given in bytes
-
-So, for the above example, the `"numbers"` value would be compiled into a node with:
-
-- "Binary" data, meaning the length is given in bytes
-- A length of `4`, since each number literal is compiled as a `u16`
-- Data bytes of <code class="hexdump"><span class="o1d o-clr3">7B 00</span></code> <code class="hexdump"><span class="o1d o-clr4">C8 01</span></code>, where <code class="hexdump"><span class="o1d o-clr3">7B 00</span></code> is `123` and <code class="hexdump"><span class="o1d o-clr4">C8 01</span></code> is `456` (as little-endian `u16`)
-
-and the `"strings"` value would be compiled into a node with:
-
-- "String" data, meaning the length is given in UTF-16 code units
-- A length of `8`, since each string is 3 UTF-16 code units plus a `NUL`-terminator
-- Data bytes of <code class="hexdump"><span class="o1d o-clr1">66 00 6F 00 6F 00 00 00</span> <span class="o1d o-clr2">62 00 61 00 72 00 00 00</span></code>, where <code class="hexdump"><span class="o1d o-clr1">66 00 6F 00 6F 00 00 00</span></code> is `"foo"` and <code class="hexdump"><span class="o1d o-clr2">62 00 61 00 72 00 00 00</span></code> is `"bar"` (both as `NUL`-terminated little-endian UTF-16)
-
-This is a bit bizarre, but when separated out like this it works fine. The problem is that there is nothing stopping you from mixing strings and numbers in one value, in which case the Windows RC compiler freaks out and writes the type as "binary" (meaning the length should be interpreted as a byte count), but the length as a mixture of byte count and UTF-16 code unit count. For example, with this resource:
-
-```rc
-1 VERSIONINFO {
-  VALUE "something", "foo", 123
-}
-```
-
-Its value's data will get compiled into these bytes: <code class="hexdump"><span class="o1d o-clr1">66 00 6F 00 6F 00 00 00</span> <span class="o1d o-clr3">7B 00</span></code>, where <code class="hexdump"><span class="o1d o-clr1">66 00 6F 00 6F 00 00 00</span></code> is `"foo"` (as `NUL`-terminated little-endian UTF-16) and <code class="hexdump"><span class="o1d o-clr3">7B 00</span></code> is `123` (as a little-endian `u16`). This makes for a total of 10 bytes (8 for `"foo"`, 2 for `123`), but the Windows RC compiler erroneously reports the value's data length as 6 (4 for `"foo"` [counted as UTF-16 code units], and 2 for `123` [counted as bytes]).
-
-This miscompilation has similar results as those detailed in ["*Your fate will be determined by a comma*"](#your-fate-will-be-determined-by-a-comma):
-- The full data of the value will not be read by a parser
-- Due to the tree structure of `VERSIONINFO` resource data, this has knock-on effects on all following nodes, meaning the entire resource will be mangled
-
-<p><aside class="note">
-
-Note: There is a [The Old New Thing post](https://devblogs.microsoft.com/oldnewthing/20061222-00/?p=28623) that mentions this bug/quirk, check it out if you want some additional details
-
-</aside></p>
-
-#### The return of the meaningful comma
-
-Before, I said that string values were compiled as `NUL`-terminated UTF-16 strings, but this is only the case when either:
-- It is the last data element of a `VALUE`, or
-- There is a comma separating it from the element after it
-
-So, this:
-
-```rc
-1 VERSIONINFO {
-  VALUE "strings", "foo", "bar"
-}
-```
-
-will be compiled with a `NUL` terminator after both `foo` and `bar`, but this:
-
-```rc
-1 VERSIONINFO {
-  VALUE "strings", "foo" "bar"
-}
-```
-
-will be compiled only with a `NUL` terminator after `bar`. This is also similar to ["*Your fate will be determined by a comma*"](#your-fate-will-be-determined-by-a-comma), but unlike that comma quirk, I don't consider this one a miscompilation because the result is not invalid/mangled, and there is a possible use-case for this behavior (concatenating two or more string literals together). However, this behavior is not mentioned in the documentation, so it's unclear if it's actually intended.
-
-#### `resinator`'s behavior
-
-`resinator` avoids the length-related miscompilation and emits a warning:
-
-```resinatorerror
-test.rc:2:22: warning: the byte count of this value would be miscompiled by the Win32 RC compiler
-  VALUE "something", "foo", 123
-                     ^~~~~~~~~~
-test.rc:2:22: note: to avoid the potential miscompilation, do not mix numbers and strings within a value
-```
-
-but matches the "meaningful comma" behavior of the Windows RC compiler.
-
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">utterly baffling</span>
-
-### Certain `DLGINCLUDE` filenames break the preprocessor
-
-The following script, when encoded as Windows-1252, will cause the `rc.exe` preprocessor to freak out and output what seems to be garbage. 
-
-```rc
-1 DLGINCLUDE "\001ýA\001\001\x1aý\xFF"
-```
-
-<p><aside class="note">
-
-Note: Certain things about the input can be changed and the bug still reproduces (e.g. the values of the octal escape sequences), but some seemingly innocuous changes can stop the bug from reproducing, like changing the case of the `\x1a` escape sequence to `\x1A`.
-
-</aside></p>
-
-```shellsession
-> rc.exe /p test.rc
-
-Preprocessed file created in: test.rcpp
-```
-
-In this particular case, it outputs mostly Chinese characters. `test.rcpp` looks like this (note: the `rc.exe` preprocessor outputs UTF-16):
-
-```c
-#line 1 "C:\\Users\\Ryan\\Programming\\Zig\\resinator\\tmp\\RCa18588"
-#line 1 "test.rc"
-#line 1 "test.rc"
-‱䱄䥇䍎啌䕄∠ぜ㄰䇽ぜ㄰ぜ㄰硜愱峽䙸≆
-```
-
-One possible explanation is that this is somehow triggering a heuristic which is then causing the input to be interpreted as some other code page, but the total loss of the `1 DLGINCLUDE` makes that seem unlikely (since most code pages I'm aware of should still contain the ASCII range). It seems more likely that this is triggering some undefined behavior in the preprocessor, and the Chinese characters are incidental.
-
-The most minimal reproduction I've found is:
-
-```rc
-1 DLGINCLUDE "â"""
-```
-
-which outputs:
-
-```c
-#line 1 "C:\\Users\\Ryan\\Programming\\Zig\\resinator\\tmp\\RCa21256"
-#line 1 "test.rc"
-#line 1 "test.rc"
-‱䱄䥇䍎啌䕄∠⋢∢
-```
-
-Some commonalities between all the reproductions of this bug I've found so far:
-- The byte count of the `.rc` file is even, no reproduction has had a filesize with an odd byte count.
-- The number of distinct sequences (a byte, an escaped integer, or an escaped quote) in the filename string has to be small (min: 2, max: 18)
-
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">utterly baffling</span>
-
-### Certain `DLGINCLUDE` filenames trigger `missing '=' in EXSTYLE=<flags>` errors
-
-```rc
-1 DLGINCLUDE "\06f\x2\x2b\445q\105[ð\134\x90 ...truncated..."
-```
-
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">miscompilation</span>
-
-### Your fate will be determined by a comma
-
-Version information is specified using key/value pairs within `VERSIONINFO` resources. The value data should always start at a 4-byte boundary, so after the key data is written, a variable number of padding bytes are written to get back to 4-byte alignment:
-
-<div style="text-align: center; display: grid; grid-gap: 10px; grid-template-columns: repeat(2, 1fr);">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
-    <code class="language-none"><span style="opacity: 50%;">1 VERSIONINFO {</span>
-  <span class="token_keyword">VALUE</span> <span style="background: rgba(255,0,0,.1);">"key"</span>, <span style="background: rgba(0,255,0,.1);">"value"</span>
-<span style="opacity: 50%;">}</span></code>
-  </pre>
-</div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
-    <code class="language-none"><span style="opacity: 25%;">......</span><span style="background: rgba(255,0,0,.1);">k.e.y...</span><span style="background: rgba(0,0,255,.1); outline: 2px solid blue;">..</span>
-<span style="background: rgba(0,255,0,.1);">v.a.l.u.e...</span><span style="opacity: 25%;">....</span></code>
-  </pre>
-</div>
-</div>
-<p style="margin:0; text-align: center;"><i class="caption">Two padding bytes are inserted after the <code>key</code> to get back to 4-byte alignment</i></p>
-
-However, if the comma between the key and value is omitted, then for whatever reason the padding bytes are also omitted:
-
-<div style="text-align: center; display: grid; grid-gap: 10px; grid-template-columns: repeat(2, 1fr);">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
-    <code class="language-none"><span style="opacity: 50%;">1 VERSIONINFO {</span>
-  <span class="token_keyword">VALUE</span> <span style="background: rgba(255,0,0,.1);">"key"</span> <span style="background: rgba(0,255,0,.1);">"value"</span>
-<span style="opacity: 50%;">}</span></code>
-  </pre>
-</div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
-    <code class="language-none"><span style="opacity: 25%;">......</span><span style="background: rgba(255,0,0,.1);">k.e.y...</span><span style="background: rgba(0,255,0,.1);">v.
-a.l.u.e...</span><span style="opacity: 25%;">......</span></code>
-  </pre>
-</div>
-</div>
-<p style="margin:0; text-align: center;"><i class="caption">Without the comma between <code>"key"</code> and <code>"value"</code>, the padding bytes are not written</i></p>
-
-The problem here is that consumers of the `VERSIONINFO` resource (e.g. [`VerQueryValue`](https://learn.microsoft.com/en-us/windows/win32/api/winver/nf-winver-verqueryvaluew)) will expect the padding bytes, so it will try to read the value as if the padding bytes were there. For example, with the simple `"key" "value"` example:
-
-```c
-VerQueryValueW(verbuf, L"\\key", &querybuf, &querysize);
-wprintf(L"%s\n", querybuf);
-```
-
-Which will print:
-
-```none
-alue
-```
-
-Plus, depending on the length of the key string, it can end up being even worse, since the value could end up being written over the top of the null terminator of the key. Here's an example:
-
-<div style="text-align: center; display: grid; grid-gap: 10px; grid-template-columns: repeat(2, 1fr);">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
-    <code class="language-none"><span style="opacity: 50%;">1 VERSIONINFO {</span>
-  <span class="token_keyword">VALUE</span> <span style="background: rgba(255,0,0,.1);">"ke"</span> <span style="background: rgba(0,255,0,.1);">"value"</span>
-<span style="opacity: 50%;">}</span></code>
-  </pre>
-</div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-  <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
-    <code class="language-none"><span style="opacity: 25%;">......</span><span style="background: rgba(255,0,0,.1);">k.e.</span><span style="background: rgba(0,255,0,.1);">v.a.l.
-u.e...</span><span style="opacity: 25%;">..........</span></code>
-  </pre>
-</div>
-</div>
-
-And the problems don't end there&mdash;`VERSIONINFO` is compiled into a tree structure, meaning the misreading of one node affects the reading of future nodes. Here's a (simplified) real-world `VERSIONINFO` resource definition from a random `.rc` file in [Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples):
-
-```rc
-VS_VERSION_INFO VERSIONINFO
-BEGIN
-    BLOCK "StringFileInfo"
-    BEGIN
-        BLOCK "040904e4"
-        BEGIN
-            VALUE "CompanyName", "Microsoft"
-            VALUE "FileDescription", "AmbientLightAware"
-            VALUE "FileVersion", "1.0.0.1"
-            VALUE "InternalName", "AmbientLightAware.exe"
-            VALUE "LegalCopyright", "(c) Microsoft.  All rights reserved."
-            VALUE "OriginalFilename", "AmbientLightAware.exe"
-            VALUE "ProductName", "AmbientLightAware"
-            VALUE "ProductVersion", "1.0.0.1"
-        END
-    END
-    BLOCK "VarFileInfo"
-    BEGIN
-        VALUE "Translation", 0x409, 1252
-    END
-END
-```
-
-and here's the Properties window of an `.exe` compiled with and without commas between all the key/value pairs:
-
-<div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<img style="margin-left:auto; margin-right:auto; display: block; margin-bottom: 8px; display: flex; flex-direction: column; flex-grow: 1;" src="/images/every-rc-exe-bug-quirk-probably/versioninfo-correct.png">
-<i class="caption">Correct version information with commas included...</i>
-</div>
-
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<img style="margin-left:auto; margin-right:auto; display: block; margin-bottom: 8px; display: flex; flex-direction: column; flex-grow: 1;" src="/images/every-rc-exe-bug-quirk-probably/versioninfo-broken.png">
-<i class="caption">...but completely broken if the commas are omitted</i>
-</div>
-</div>
-
-<p><aside class="note">
-
-Note: This miscompilation will only occur when:
-
-- the comma between the key and the first value in a `VALUE` statement is omitted, *and*
-- the first value is a quoted string
-
-That is, `VALUE "key" "value"` will miscompile but `VALUE "key", "value"` or `VALUE "key" 1` won't.
-
-</aside></p>
-
-#### `resinator`'s behavior
-
-`resinator` avoids the miscompilation (always inserts the necessary padding bytes) and emits a warning.
-
-```resinatorerror
-test.rc:2:15: warning: the padding before this quoted string value would be miscompiled by the Win32 RC compiler
-  VALUE "key" "value"
-              ^~~~~~~
-test.rc:2:15: note: to avoid the potential miscompilation, consider adding a comma between the key and the quoted string
-```
-
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">fundamental concept</span>
-
-### Turning off flags with `NOT` expressions
-
-Let's say you wanted to define a dialog resource with a button, but you wanted the button to start invisible. You'd do this with a `NOT` expression in the "style" parameter of the button like so:
-
-<pre><code class="language-c"><span style="opacity: 50%;">1 DIALOGEX 0, 0, 282, 239
-{</span>
-  PUSHBUTTON <span style="opacity: 50%;">"Cancel",1,129,212,50,14,</span> <span class="token_operator">NOT</span> WS_VISIBLE
-<span style="opacity: 50%;">}</span></code>
-</pre>
-
-Since `WS_VISIBLE` is set by default, this will unset it and make the button invisible. If there are any other flags that should be applied, they can be bitwise OR'd like so:
-
-<pre><code class="language-c"><span style="opacity: 50%;">1 DIALOGEX 0, 0, 282, 239
-{</span>
-  PUSHBUTTON <span style="opacity: 50%;">"Cancel",1,129,212,50,14,</span> <span class="token_operator">NOT</span> WS_VISIBLE <span class="token_operator">|</span> BS_VCENTER
-<span style="opacity: 50%;">}</span></code>
-</pre>
-
-`WS_VISIBLE` and `BS_VCENTER` are `#define`s that stem from `WinUser.h` and are just numbers under-the-hood. For simplicity's sake, let's pretend their values are `0x1` for `WS_VISIBLE` and `0x2` for `BS_VCENTER` and then focus on this simplified `NOT` expression:
-
-<pre><code class="language-c"><span class="token_operator">NOT</span> 0x1 <span class="token_operator">|</span> 0x2</code>
-</pre>
-
-Since `WS_VISIBLE` is on by default, the default value of these flags is `0x1`, and so the resulting value is evaluated like this:
-
-<div class="not-eval">
-
-<div><i>operation</i></div>
-<div><i>binary representation of the result</i></div>
-<div><i>hex representation of the result</i></div>
-
-<div class="not-eval-border"><span><small>Default value:</small> <code>0x1</code></span></div>
-<div class="not-eval-code"><pre><code>0000 0001</code></pre></div>
-<div class="not-eval-border"><span><code>0x1</code></span></div>
-
-<div class="not-eval-border"><code><span class="token_operator">NOT</span> 0x1</code></div>
-<div class="not-eval-code"><pre><code>0000 000<span class="token_deleted">0</span></code></pre></div>
-<div class="not-eval-border"><span><code>0x0</code></span></div>
-
-<div class="not-eval-border"><code><span class="token_operator">|</span> 0x2</code></div>
-<div class="not-eval-code"><pre><code>0000 00<span class="token_addition">1</span>0</code></pre></div>
-<div class="not-eval-border"><span><code>0x2</code></span></div>
-
-</div>
-
-Ordering matters as well. If we switch the expression to:
-
-```rc
-NOT 0x1 | 0x1
-```
-
-then we end up with `0x1` as the result:
-
-<div class="not-eval">
-
-<div><i>operation</i></div>
-<div><i>binary representation of the result</i></div>
-<div><i>hex representation of the result</i></div>
-
-<div class="not-eval-border"><span><small>Default value:</small> <code>0x1</code></span></div>
-<div class="not-eval-code"><pre><code>0000 0001</code></pre></div>
-<div class="not-eval-border"><span><code>0x1</code></span></div>
-
-<div class="not-eval-border"><code><span class="token_operator">NOT</span> 0x1</code></div>
-<div class="not-eval-code"><pre><code>0000 000<span class="token_deleted">0</span></code></pre></div>
-<div class="not-eval-border"><span><code>0x0</code></span></div>
-
-<div class="not-eval-border"><code><span class="token_operator">|</span> 0x1</code></div>
-<div class="not-eval-code"><pre><code>0000 000<span class="token_addition">1</span></code></pre></div>
-<div class="not-eval-border"><span><code>0x1</code></span></div>
-
-</div>
-
-If, instead, the ordering was reversed like so:
-
-```rc
-0x1 | NOT 0x1
-```
-
-then the value at the end would be `0x0`:
-
-<div class="not-eval">
-
-<div><i>operation</i></div>
-<div><i>binary representation of the result</i></div>
-<div><i>hex representation of the result</i></div>
-
-<div class="not-eval-border"><span><small>Default value:</small> <code>0x1</code></span></div>
-<div class="not-eval-code"><pre><code>0000 0001</code></pre></div>
-<div class="not-eval-border"><span><code>0x1</code></span></div>
-
-<div class="not-eval-border"><code>0x1</code></div>
-<div class="not-eval-code"><pre><code>0000 0001</code></pre></div>
-<div class="not-eval-border"><span><code>0x1</code></span></div>
-
-<div class="not-eval-border"><code><span class="token_operator">|</span> <span class="token_operator">NOT</span> 0x1</code></div>
-<div class="not-eval-code"><pre><code>0000 000<span class="token_deleted">0</span></code></pre></div>
-<div class="not-eval-border"><span><code>0x0</code></span></div>
-
-</div>
-
-With these basic examples, `NOT` seems pretty straightforward, however...
-
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">utterly baffling</span>
-
-### `NOT` is incomprehensible
-
-Practically any deviation outside the simple examples outlined in [*Turning off flags with `NOT` expressions*](#turning-off-flags-with-not-expressions) leads to bizarre and inexplicable results. For example, these expressions are all accepted by the Windows RC compiler:
-
-- `NOT (1 | 2)`
-- `NOT () 2`
-- `7 NOT NOT 4 NOT 2 NOT NOT 1`
-
-The first one looks like it makes sense, as intuitively the `(1 | 2)` would be evaluated first so in theory it should be equivalent to `NOT 3`. However, if the default value of the flags is `0`, then the expression `NOT (1 | 2)` (somehow) evaluates to `2`, whereas `NOT 3` would evaluate to `0`.
-
-`NOT () 2` seems like it should obviously be a syntax error, but for whatever reason it's accepted by the Windows RC compiler and also evaluates to `2`.
-
-`7 NOT NOT 4 NOT 2 NOT NOT 1` is entirely incomprehensible, and just as incomprehensibly, it *also* results in `2` (if the default value is `0`).
-
-This behavior is so bizarre and obviously incorrect that I didn't even try to understand what's going on here, so your guess is as good as mine on this one.
-
-#### `resinator`'s behavior
-
-`resinator` only accepts `NOT <number>`, anything else is an error:
-
-```resinatorerror
-test.rc:2:13: error: expected '<number>', got '('
-  STYLE NOT () 2
-            ^
-```
-
-All 3 of the above examples lead to compile errors in `resinator`.
-
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">parser bug/quirk</span>
-
-### `NOT` can be used in places it makes no sense
-
-The strangeness of `NOT` doesn't end there, as the Windows RC compiler also allows it to be used in many (but not all) places that a number expression can be used.
-
-As an example, here are `NOT` expressions used in the `x`, `y`, `width`, and `height` arguments of a `DIALOGEX` resource:
-
-```rc
-1 DIALOGEX NOT 1, NOT 2, NOT 3, NOT 4
-{
-  // ...
-}
-```
-
-This doesn't necessarily cause problems, but since `NOT` is only useful in the context of turning off enabled-by-default flags of a bit flag parameter, there's no reason to allow `NOT` expressions outside of that context.
-
-However, there *is* an extra bit of weirdness involved here, since certain `NOT` expressions cause errors in some places but not others. For example, the expression `1 | NOT 2` is an error if it's used in the `type` parameter of a `MENUEX`'s `MENUITEM`, but `NOT 2 | 1` is totally accepted.
-
-```rc
-1 MENUEX {
-  // Error: numeric value expected at NOT
-  MENUITEM "bar", 101, 1 | NOT 2
-  // No error if the NOT is moved to the left of the bitwise OR
-  MENUITEM "foo", 100, NOT 2 | 1
-}
-```
-
-<p><aside class="note">
-
-Note: `1 | NOT 2` is legal in all bit flag parameters (where the use of `NOT` actually makes sense).  
-
-</aside></p>
-
-#### `resinator`'s behavior
-
-`resinator` errors if `NOT` expressions are attempted to be used outside of bit flag parameters:
-
-```resinatorerror
-test.rc:1:12: error: expected number or number expression; got 'NOT'
-1 DIALOGEX NOT 1, NOT 2, NOT 3, NOT 4
-           ^~~
-```
-
-</div>
-
-<div class="bug-quirk-box">
 <span class="bug-quirk-category">missing error, miscompilation</span>
 
 ### Cursor posing as an icon and vice versa
@@ -2375,7 +2907,7 @@ The Windows RC compiler is fine with `.ico` files that have PNG encoded images, 
 ```rc
 // No error, compiles and loads just fine
 1 ICON "png.ico"
-// error RC2176 : old DIB in 1x1_png.cur; pass it through SDKPAINT
+// error RC2176 : old DIB in png.cur; pass it through SDKPAINT
 2 CURSOR "png.cur"
 ```
 
@@ -2737,103 +3269,6 @@ My guess/hope is that this a bug in `LoadBitmap`, as I believe the `resinator`-c
 </div>
 
 <div class="bug-quirk-box">
-<span class="bug-quirk-category">preprocessor bug/quirk</span>
-
-### Extreme `#pragma code_page` values
-
-The resource-compiler-specific preprocessor directive `#pragma code_page` can be used to alter the [code page](https://en.wikipedia.org/wiki/Code_page) used mid-file. It's used like so:
-
-```rc
-#pragma code_page(1252) // Windows-1252
-// ... bytes from now on are interpreted as Windows-1252 ...
-
-#pragma code_page(65001) // UTF-8
-// ... bytes from now on are interpreted as UTF-8 ...
-```
-
-The list of possible code pages [can be found here](https://learn.microsoft.com/en-us/windows/win32/intl/code-page-identifiers). If you try to use one that is not valid, `rc.exe` will error with:
-
-```
-fatal error RC4214: Codepage not valid:  ignored
-```
-
-But what happens if you try to use an extremely large code page value (greater or equal to the max of a `u32`)? Most of the time it errors in the same way as above, but occasionally there's a strange / inexplicable error. Here's a selection of a few:
-
-<div class="short-rc-and-result">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
-#pragma code_page(4294967296)
-```
-
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
-error RC4212: Codepage not integer:  )
-fatal error RC1116: RC terminating after preprocessor errors
-```
-
-</div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
-#pragma code_page(4295032296)
-```
-
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
-fatal error RC22105: MultiByteToWideChar failed.
-```
-
-</div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
-#pragma code_page(4295032297)
-```
-
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
-test.rc(2) : error RC2177: constant too big
-test.rc(2) : error RC4212: Codepage not integer:  4
-fatal error RC1116: RC terminating after preprocessor errors
-```
-
-</div>
-</div>
-
-#### `resinator`'s behavior
-
-`resinator` treats code pages exceeding the max of a `u32` as a fatal error.
-
-```resinatorerror
-test.rc:1:1: error: code page too large in #pragma code_page
-#pragma code_page ( 4294967296 )
-^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-```
-
-This is a separate error from the one caused by invalid/unsupported code pages:
-
-```resinatorerror
-test.rc:1:1: error: invalid or unknown code page in #pragma code_page
-#pragma code_page ( 64999 )
-^~~~~~~~~~~~~~~~~~~~~~~~~~~
-```
-
-```resinatorerror
-test.rc:1:1: error: unsupported code page 'utf7 (id=65000)' in #pragma code_page
-#pragma code_page ( 65000 )
-^~~~~~~~~~~~~~~~~~~~~~~~~~~
-```
-
-</div>
-
-<div class="bug-quirk-box">
 <span class="bug-quirk-category">parser bug/quirk, utterly baffling</span>
 
 ### The strange power of the lonely close parenthesis
@@ -2867,8 +3302,8 @@ But that's not all; take this, for example, where we define a `RCDATA` resource 
 
 This should very clearly be a syntax error, but it's actually accepted by the Windows RC compiler. What does the RC compiler do, you ask? Well, it just skips right over all the `)`, of course, and the data of this resource ends up as:
 
-<pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
-  <code class="language-none"><span style="font-family:sans-serif; font-style:italic">the 1 (u16 little endian) &rarr;</span> <span style="outline: 1px dashed red;">01 00</span> <span style="outline: 1px dashed orange;">02 00</span> <span style="font-family:sans-serif; font-style:italic">&larr; the 2 (u16 little endian)</span></code>
+<pre class="hexdump" style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
+  <code class="language-none"><span style="font-family:sans-serif; font-style:italic">the 1 (u16 little endian) &rarr;</span> <span class="o1d o-clr1">01 00</span> <span class="o1d o-clr2">02 00</span> <span style="font-family:sans-serif; font-style:italic">&larr; the 2 (u16 little endian)</span></code>
 </pre>
 
 I said 'skip' because that's truly what seems to happen. For example, for resource definitions that take positional parameters like so:
@@ -2973,6 +3408,199 @@ test.rc:1:14: error: expected number or number expression; got ','
 <div class="bug-quirk-box">
 <span class="bug-quirk-category">parser bug/quirk</span>
 
+### General comma-related inconsistencies
+
+The rules around commas within statements can be one of the following depending on the context:
+
+- Exactly one comma
+- Zero or one comma
+- Zero or any number of commas
+
+And these rules can be mixed and matched within statements. I've tried to codify my understanding of the rules around commas in a [test `.rc` file I wrote](https://github.com/squeek502/resinator/blob/9a6e50b0c0859e0dee5fd1871d93329e0e1194ef/test/data/reference.rc). Here's an example statement that contains all 3 rules:
+
+```rc
+AUTO3STATE,, "mytext",, 900,, 1/*,*/ 2/*,*/ 3/*,*/ 4, 3 | NOT 1L, NOT 1 | 3L
+```
+<p style="margin:0; text-align: center;"><i class="caption"><code>,,</code> indicates "zero or any number of commas", <code><span class="token_comment">/*,*/</span></code> indicates "zero or one comma", and <code>,</code> indicates "exactly 1 comma"</i></p>
+
+#### Empty parameters
+
+In most places where parameters cannot have any number of commas separating them, `,,` will lead to a compile error. For example:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; justify-content: center; flex-grow: 1; margin-top: 0;"
+1 ACCELERATORS {
+  "^b",, 1
+}
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"
+test.rc(2) : error RC2107 : expected numeric command value
+```
+
+</div>
+</div>
+
+However, there are a few places where empty parameters are accepted, and therefore `,,` is not a compile error, e.g. in the `MENUITEM` of a `MENUEX` resource:
+
+```rc
+1 MENUEX {
+  // The three statements below are equivalent
+  MENUITEM "foo", 0, 0, 0,
+  MENUITEM "foo", /*id*/, /*type*/, /*state*/,
+  MENUITEM "foo",,,,
+  // The parameters are optional, so this is also equivalent
+  MENUITEM "foo"
+}
+```
+
+Adding one more comma will cause a compile error:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; justify-content: center; flex-grow: 1; margin-top: 0;"
+1 MENUEX {
+  MENUITEM "foo",,,,,
+}
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"
+test.rc(2) : error RC2235 : too many arguments supplied
+```
+
+</div>
+</div>
+
+#### Italic is singled out
+
+`DIALOGEX` resources can specify a font to use using a `FONT` optional statement like so:
+
+```rc
+1 DIALOGEX 1, 2, 3, 4
+  FONT 16, "Foo"
+{
+  // ...
+}
+```
+
+The full syntax of the `FONT` statement in this context is:
+
+<pre class="annotated-code"><code class="language-rc" style="white-space: inherit;"><span class="token_keyword">FONT</span> <span class="annotation"><span class="desc">pointsize<i></i></span><span class="subject"><span class="token_identifier">16</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">typeface<i></i></span><span class="subject"><span class="token_string">"Foo"</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">weight<i></i></span><span class="subject"><span class="token_identifier">1</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">italic<i></i></span><span class="subject"><span class="token_identifier">2</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">charset<i></i></span><span class="subject"><span class="token_identifier">3</span></span></span></code></pre>
+<p style="margin:0; text-align: center;"><i class="caption"><code>weight</code>, <code>italic</code>, and <code>charset</code> are optional</i></p>
+
+For whatever reason, while `weight` and `charset` can be empty parameters, `italic` seemingly cannot, since this fails:
+
+<div class="short-rc-and-result">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; justify-content: center; flex-grow: 1; margin-top: 0;"
+1 DIALOGEX 1, 2, 3, 4
+  FONT 16, "Foo", /*weight*/, /*italic*/, /*charset*/
+{
+  // ...
+}
+```
+
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"
+test.rc(2) : error RC2112 : BEGIN expected in dialog
+
+test.rc(6) : error RC2135 : file not found: }
+```
+
+</div>
+</div>
+
+but this succeeds:
+
+```rc
+1 DIALOGEX 1, 2, 3, 4
+  FONT 16, "Foo", /*weight*/, 0, /*charset*/
+{
+  // ...
+}
+```
+
+Due to the strangeness of the error, I'm assuming that this `italic`-parameter-specific-behavior is unintended.
+
+#### Further weirdness
+
+<p><aside class="note">
+  
+Note: This is not really comma-related, this is just a tangentially-related side note
+
+</aside></p>
+
+Continuing on with the `FONT` statement of `DIALOGEX` resource: as we saw in ["*If you're not last, you're irrelevant*"](#if-you-re-not-last-you-re-irrelevant), if there are duplicate statements of the same type, all but the last one is ignored:
+
+```rc
+1 DIALOGEX 1, 2, 3, 4
+  FONT 16, "Foo", 1, 2, 3 // Ignored
+  FONT 32, "Bar", 4, 5, 6
+{
+  // ...
+}
+```
+
+In the above example, the values-as-compiled will all come from this `FONT` statement:
+
+```rc
+  FONT 32, "Bar", 4, 5, 6
+```
+
+However, given that the `weight`, `italic`, and `charset` parameters are optional, if you don't specify them, then their values from the previous `FONT` statement(s) *do* actually carry over, with the exception of the `charset` parameter:
+
+```rc
+1 DIALOGEX 1, 2, 3, 4
+  FONT 16, "Foo", 1, 2, 3
+  FONT 32, "Bar"
+{
+  // ...
+}
+```
+
+With the above, the `FONT` statement that ends up being compiled will effectively be:
+
+```rc
+  FONT 32, "Bar", 1, 2, 1
+```
+
+where the last `1` is the `charset` parameter's default value (`DEFAULT_CHARSET`) rather than the `3` we might expect from the duplicate `FONT` statement.
+
+#### `resinator`'s behavior
+
+`resinator` matches the Windows RC compiler behavior, but has better error messages/additonal warnings where appropriate:
+
+```resinatorerror
+test.rc:2:21: error: expected number or number expression; got ','
+  FONT 16, "Foo", , ,
+                    ^
+test.rc:2:21: note: this line originated from line 2 of file 'test.rc'
+  FONT 16, "Foo", /*weight*/, /*italic*/, /*charset*/
+```
+
+```resinatorerror
+test.rc:2:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
+  FONT 16, "Foo", 1, 2, 3
+  ^~~~~~~~~~~~~~~~~~~~~~~
+```
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">parser bug/quirk</span>
+
 ### `NUL` in filenames
 
 If a filename evaluates to a string that contains a `NUL` (`0x00`) character, the Windows RC compiler treats it as a terminator. For example,
@@ -2992,546 +3620,6 @@ test.rc:1:10: error: evaluated filename contains a disallowed codepoint: <U+0000
 1 RCDATA "hello\x00world"
          ^~~~~~~~~~~~~~~~
 ```
-
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">parser bug/quirk</span>
-
-### Unary operators are an illusion
-
-Typically, unary `+`, `-`, etc. operators are just that&mdash;operators; they are separate tokens that act on other tokens (number literals, variables, etc). However, in the Windows RC compiler, they are not real operators.
-
-#### Unary `-`
-
-The unary `-` is included as part of a number literal, not as a distinct operator. This behavior can be confirmed in a rather strange way, taking advantage of a separate quirk described in ["*Number expressions as filenames*"](#number-expressions-as-filenames). When a resource's filename is specified as a number expression, the file path it ultimately looks for is the last number literal in the expression, so for example:
-
-<div class="short-rc-and-result">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
-1 FOO (567 + 123)
-```
-
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
-test.rc(1) : error RC2135 : file not found: 123
-```
-
-</div>
-</div>
-
-And if we throw in a unary `-` like so, then it gets included as part of the filename:
-
-<div class="short-rc-and-result">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
-1 FOO (567 + -123)
-```
-
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
-test.rc(1) : error RC2135 : file not found: -123
-```
-
-</div>
-</div>
-
-This quirk leads to a few unexpected valid patterns, since `-` on its own is also considered a valid number literal (and it resolves to `0`), so:
-
-```rc
-1 FOO { 1-- }
-```
-
-evaluates to `1-0` and results in `1` being written to the resource's data, while:
-
-```rc
-1 FOO { "str" - 1 }
-```
-
-looks like a string literal minus 1, but it's actually interpreted as 3 separate raw data values (`str`, `-` [which evaluates to 0], and `1`), since commas between data values in a raw data block are optional.
-
-Additionally, it means that otherwise valid looking expressions may not actually be considered valid:
-
-<div class="short-rc-and-result">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
-1 FOO { (-(123)) }
-```
-
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
-test.rc(1) : error RC1013 : mismatched parentheses
-```
-
-</div>
-</div>
-
-#### Unary `~`
-
-The unary NOT (`~`) works exactly the same as the unary `-` and has all the same quirks. For example, a `~` on its own is also a valid number literal:
-
-<div class="short-rc-and-result">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
-1 FOO { ~ }
-```
-
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<div class="box-border" style="display: flex; flex-direction: column; flex-grow: 1; padding: 1em; margin: 0.5em 0; margin-top: 0;"><div>Data is a <code>u16</code> with the value <code>0xFFFF</code></div></div>
-</div>
-</div>
-
-And `~L` (to turn the integer into a `u32`) is valid in the same way that `-L` would be valid:
-
-<div class="short-rc-and-result">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
-1 FOO { ~L }
-```
-
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<div class="box-border" style="display: flex; flex-direction: column; flex-grow: 1; padding: 1em; margin: 0.5em 0; margin-top: 0;"><div>Data is a <code>u32</code> with the value <code>0xFFFFFFFF</code></div></div>
-</div>
-</div>
-
-#### Unary `+`
-
-The unary `+` is almost entirely a hallucination; it can be used in some places, but not others, without any discernible rhyme or reason.
-
-This is valid (and the parameters evaluate to `1`, `2`, `3`, `4` as expected):
-
-```rc
-1 DIALOG +1, +2, +3, +4 {}
-```
-
-but this is an error:
-
-<div class="short-rc-and-result">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
-1 FOO { +123 }
-```
-
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
-test.rc(1) : error RC2164 : unexpected value in RCDATA
-```
-
-</div>
-</div>
-
-and so is this:
-
-<div class="short-rc-and-result">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
-1 DIALOG (+1), 2, 3, 4 {}
-```
-
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
-test.rc(1) : error RC2237 : numeric value expected at DIALOG
-```
-
-</div>
-</div>
-
-Because the rules around the unary `+` are so opaque, I am unsure if it shares many of the same properties as the unary `-`. I do know, though, that `+` on its own does not seem to be an accepted number literal in any case I've seen so far.
-
-#### `resinator`'s behavior
-
-`resinator` matches the Windows RC compiler's behavior around unary `-`/`~`, but disallows unary `+` entirely:
-
-```resinatorerror
-test.rc:1:10: error: expected number or number expression; got '+'
-1 DIALOG +1, +2, +3, +4 {}
-         ^
-test.rc:1:10: note: the Win32 RC compiler may accept '+' as a unary operator here, but it is not supported in this implementation; consider omitting the unary +
-```
-
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">parser bug/quirk, utterly baffling</span>
-
-### `CONTROL`: "I'm just going to pretend I didn't see that"
-
-Within `DIALOG`/`DIALOGEX` resources, there are predefined controls like `PUSHBUTTON`, `CHECKBOX`, etc, which are actually just syntactic sugar for generic `CONTROL` statements with particular default values for the "class name" and "style" parameters.
-
-For example, these two statements are equivalent:
-
-<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">class<i></i></span><span class="subject"><span class="token_keyword">CHECKBOX</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">text<i></i></span><span class="subject"><span class="token_string">"foo"</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">id<i></i></span><span class="subject">1</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">x<i></i></span><span class="subject">2</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">y<i></i></span><span class="subject">3</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">w<i></i></span><span class="subject">4</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">h<i></i></span><span class="subject">5</span></span></code></pre>
-
-<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">class<i></i></span><span class="subject"><span class="token_keyword">CONTROL</span></span></span><span class="token_punctuation">,</span> <span class="token_string">"foo"</span><span class="token_punctuation">,</span> 1<span class="token_punctuation">,</span> <span class="annotation"><span class="desc">class name<i></i></span><span class="subject"><span class="token_keyword">BUTTON</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">style<i></i></span><span class="subject"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span></span></span><span class="token_punctuation">,</span> 2<span class="token_punctuation">,</span> 3<span class="token_punctuation">,</span> 4<span class="token_punctuation">,</span> 5</code></pre>
-
-There is something bizarre about the "style" parameter of a generic control statement, though. For whatever reason, it allows an extra token within it and will act as if it doesn't exist.
-
-<pre style="margin-top: 3em; overflow: visible; white-space: pre-wrap;"><code class="language-c" style="white-space: inherit;"><span style="opacity:50%;">CONTROL, "text", 1, BUTTON,</span> <span style="outline:2px dotted blue; position:relative; display:inline-block;"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span> <span class="token_string">"why is this allowed"</span><span class="hexdump-tooltip rcdata">style<i></i></span></span><span style="opacity: 50%;">, 2, 3, 4, 5</span></code></pre>
-
-The `"why is this allowed"` string is completely ignored, and this `CONTROL` will be compiled exactly the same as the previous `CONTROL` statement shown above.
-
-<p><aside class="note">
-
-- This bug/quirk requires there to be no comma before the extra token. In the above example, if there is a comma between the `BS_CHECKBOX | WS_TABSTOP` and the `"why is this allowed"`, then it will (properly) error with `expected numerical dialog constant`
-- This bug/quirk is specific to the `style` parameter of `CONTROL` statements. In non-generic controls, the style parameter is optional and comes after the `h` parameter, but it does not exhibit this behavior
-
-</aside></p>
-
-The extra token can be many things (string, number, `=`, etc), but not *anything*. For example, if the extra token is `;`, then it will error with `expected numerical dialog constant`.
-
-#### `CONTROL`: "Okay, I see that expression, but I don't understand it"
-
-Instead of a single extra token in the `style` parameter of a `CONTROL`, it's also possible to sneak an extra number expression in there like so:
-
-<pre style="margin-top: 3em; overflow: visible; white-space: pre-wrap;"><code class="language-c" style="white-space: inherit;"><span style="opacity:50%;">CONTROL, "text", 1, BUTTON,</span> <span style="outline:2px dotted blue; position:relative; display:inline-block;"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span> <span class="token_punctuation">(</span>7<span class="token_operator">+</span>8<span class="token_punctuation">)</span><span class="hexdump-tooltip rcdata">style<i></i></span></span><span style="opacity: 50%;">, 2, 3, 4, 5</span></code></pre>
-
-In this case, the Windows RC compiler no longer ignores the expression, but still behaves strangely. Instead of the entire `(7+8)` expression being treated as the `x` parameter like you might expect, in this case *only the* `8` in the expression is treated as the `x` parameter, so it ends up interpreted like this:
-
-<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span style="opacity:50%;">CONTROL, "text", 1, BUTTON,</span> <span class="annotation"><span class="desc">style<i></i></span><span class="subject"><span class="token_identifier">BS_CHECKBOX</span> <span class="token_operator">|</span> <span class="token_identifier">WS_TABSTOP</span></span></span> <span style="opacity:50%;">(7+</span><span class="annotation"><span class="desc">x<i></i></span><span class="subject">8</span></span><span style="opacity:50%;">)</span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">y<i></i></span><span class="subject">2</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">w<i></i></span><span class="subject">3</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">h<i></i></span><span class="subject">4</span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">exstyle<i></i></span><span class="subject">5</span></span></code></pre>
-
-My guess is that the similarity between this number-expression-related-behavior and ["*Number expressions as filenames*"](#number-expressions-as-filenames) is not a coincidence, but beyond that I couldn't tell you what's going on here.
-
-#### `resinator`'s behavior
-
-Such extra tokens/expressions are never ignored by `resinator`; they are always treated as the `x` parameter, and a warning is emitted if there is no comma between the `style` and `x` parameters.
-
-```resinatorerror
-test.rc:4:57: warning: this token could be erroneously skipped over by the Win32 RC compiler
-  CONTROL, "text", 1, BUTTON, 0x00000002L | 0x00010000L "why is this allowed", 2, 3, 4, 5
-                                                        ^~~~~~~~~~~~~~~~~~~~~
-test.rc:4:57: note: this line originated from line 4 of file 'test.rc'
-  CONTROL, "text", 1, BUTTON, BS_CHECKBOX | WS_TABSTOP "why is this allowed", 2, 3, 4, 5
-
-test.rc:4:31: note: to avoid the potential miscompilation, consider adding a comma after the style parameter
-  CONTROL, "text", 1, BUTTON, 0x00000002L | 0x00010000L "why is this allowed", 2, 3, 4, 5
-                              ^~~~~~~~~~~~~~~~~~~~~~~~~
-test.rc:4:57: error: expected number or number expression; got '"why is this allowed"'
-  CONTROL, "text", 1, BUTTON, 0x00000002L | 0x00010000L "why is this allowed", 2, 3, 4, 5
-                                                        ^~~~~~~~~~~~~~~~~~~~~
-```
-
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">parser bug/quirk</span>
-
-### L is not allowed there
-
-Like in C, an integer literal can be suffixed with `L` to signify that it is a 'long' integer literal. In the case of the Windows RC compiler, integer literals are typically 16 bits wide, and suffixing an integer literal with `L` will instead make it 32 bits wide.
-
-<div class="short-rc-and-result">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-<pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
-  <code class="language-c">1<span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_identifier">RCDATA</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_punctuation">{</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span style="outline: 1px dashed red; padding: 0 3px;">1</span><span class="token_punctuation">,</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span style="outline: 1px dashed orange; padding: 0 3px;">2L</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_punctuation">}</span><span class="token_ansi_c_whitespace token_whitespace">
-</span></code>
-</pre>
-
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-<pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
-  <code class="language-none"><span style="outline: 1px dashed red;">01 00</span> <span style="outline: 1px dashed orange;">02 00 00 00</span></code>
-</pre>
-
-</div>
-</div>
-<p style="margin:0; text-align: center;"><i class="caption">A <code>RCDATA</code> resource definition and a hexdump of the resulting data in the <code>.res</code> file</i></p>
-
-However, outside of raw data blocks like the `RCDATA` example above, the `L` suffix is typically meaningless, as it has no bearing on the size of the integer used. For example, `DIALOG` resources have `x`, `y`, `width`, and `height` parameters, and they are each encoded in the data as a `u16` regardless of the integer literal used. If the value would overflow a `u16`, then the value is truncated back down to a `u16`, meaning in the following example all 4 parameters after `DIALOG` get compiled down to `1` as a `u16`:
-
-```rc
-1 DIALOG 1, 1L, 65537, 65537L {}
-```
-
-A few particular parameters, though, fully disallow integer literals with the `L` suffix from being used:
-
-- Any of the four parameters of the `FILEVERSION` statement of a `VERSIONINFO` resource
-- Any of the four parameters of the `PRODUCTVERSION` statement of a `VERSIONINFO` resource
-- Any of the two parameters of a `LANGUAGE` statement
-
-<div class="short-rc-and-result">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
-LANGUAGE 1L, 2
-```
-
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
-test.rc(1) : error RC2145 : PRIMARY LANGUAGE ID too large
-```
-
-</div>
-</div>
-
-<div class="short-rc-and-result">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```rc style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;"
-1 VERSIONINFO
-  FILEVERSION 1L, 2, 3, 4
-BEGIN
-END
-```
-
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"
-test.rc(2) : error RC2127 : version WORDs separated by commas expected
-```
-
-</div>
-</div>
-
-It is true that these parameters are limited to `u16`, so using an `L` suffix is likely a mistake, but that is also true of many other parameters for which the Windows RC compiler happily allows `L` suffixed numbers for. It's unclear why these particular parameters are singled out, and even more unclear given the fact that specifying these parameters using an integer literal that would overflow a `u16` does not actually trigger an error (and instead it truncates the values to a `u16`):
-
-```rc
-1 VERSIONINFO
-  FILEVERSION 65537, 65538, 65539, 65540
-BEGIN
-END
-```
-
-The compiled `FILEVERSION` in this case will be `1`, `2`, `3`, `4`:
-
-```
-65537 = 0x10001; truncated to u16 = 0x0001
-65538 = 0x10002; truncated to u16 = 0x0002
-65539 = 0x10003; truncated to u16 = 0x0003
-65540 = 0x10004; truncated to u16 = 0x0004
-```
-
-#### `resinator`'s behavior
-
-`resinator` allows `L` suffixed integer literals everywhere and truncates the value down to the appropriate number of bits when necessary.
-
-```resinatorerror
-test.rc:1:10: warning: this language parameter would be an error in the Win32 RC compiler
-LANGUAGE 1L, 2
-         ^~
-test.rc:1:10: note: to avoid the error, remove any L suffixes from numbers within the parameter
-```
-
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">miscompilation, crash</span>
-
-### No one has thought about `FONT` resources for decades
-
-As far as I can tell, the `FONT` resource has exactly one purpose: creating `.fon` files, which are resource-only `.dll`s (i.e. a `.dll` with resources, but no entry point) renamed to have a `.fon` extension. Such `.fon` files contain a collection of fonts in the obsolete `.fnt` font format.
-
-The `.fon` format is also mostly obsolete, but is still supported in modern Windows, and Windows *still* ships with some `.fon` files included:
-
-<div style="text-align: center;">
-<img style="margin-left:auto; margin-right:auto; display: block;" src="/images/every-rc-exe-bug-quirk-probably/windows-10-fon.png">
-<p style="margin-top: .5em;"><i class="caption">The <code>Terminal</code> font included in Windows 10 is a <code>.fon</code> file</i></p>
-</div>
-
-This `.fon`-related purpose for the `FONT` resource, however, has been irrelevant for decades, and, as far as I can tell, has not worked fully correctly since the 16-bit version of the Windows RC compiler. To understand why, though, we have to understand a little bit about the `.fnt` format.
-
-In version 1 of the `.fnt` format, specified by the [Windows 1.03 SDK from 1986](https://www.os2museum.com/files/docs/win10sdk/windows-1.03-sdk-prgref-1986.pdf), the total size of all the static fields in the header was 117 bytes, with a few fields containing offsets to variable-length data elsewhere in the file. Here's a (truncated) visualization, with some relevant 'offset' fields expanded:
-
-<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;"><span style="background: rgba(0,255,0,.1);">....version....</span>
-<span style="background: rgba(0,0,255,.1);">......size.....</span>
-<span style="background: rgba(150,0,255,.1);">...copyright...</span>
-<span style="background: rgba(0,255,0,.1);">......type.....</span>
-<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
-<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
-<span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">.device_offset.</span> ───► <span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">NUL-terminated device name.</span>
-<span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">..face_offset..</span> ───► <span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">NUL-terminated font face name.</span>
-<span style="background: rgba(0,255,0,.1);">....bits_ptr...</span>
-<span style="background: rgba(0,0,255,.1);">..bits_offset..</span></code></pre>
-
-In [version 3 of the `.fnt` format](https://web.archive.org/web/20080115184921/http://support.microsoft.com/kb/65123) (and presumably version 2, but I can't find much info about version 2), all of the fields up to and including `bits_offset` are the same, but there are an additional 31 bytes of new fields, making for a total size of 148 bytes:  
-
-<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;"><span style="opacity: 0.5"><span style="background: rgba(0,255,0,.1);">....version....</span>
-<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
-<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
-<span style="background: rgba(0,0,255,.1);">.device_offset.</span>
-<span style="background: rgba(150,0,255,.1);">..face_offset..</span>
-<span style="background: rgba(0,255,0,.1);">....bits_ptr...</span>
-<span style="background: rgba(0,0,255,.1);">..bits_offset..</span></span>
-<span style="background: rgba(150,0,255,.1);">....reserved...</span> ◄─┐
-<span style="background: rgba(0,255,0,.1);">.....flags.....</span> ◄─┤
-<span style="background: rgba(0,0,255,.1);">.....aspace....</span> ◄─┤
-<span style="background: rgba(150,0,255,.1);">.....bspace....</span> ◄─┼── new fields
-<span style="background: rgba(0,255,0,.1);">.....cspace....</span> ◄─┤
-<span style="background: rgba(0,0,255,.1);">...color_ptr...</span> ◄─┤
-<span style="background: rgba(150,0,255,.1);">...reserved1...</span>   │
-<span style="background: rgba(150,0,255,.1);">...............</span> ◄─┘
-<span style="background: rgba(150,0,255,.1);">...............</span></code></pre>
-
-Getting back to resource compilation, `FONT` resources within `.rc` files are collected and compiled into the following resources:
-
-- A `RT_FONT` resource for each `FONT`, where the data is the verbatim file contents of the `.fnt` file
-- A `FONTDIR` resource that contains data about each font, in the format specified by [`FONTGROUPHDR`](https://learn.microsoft.com/en-us/windows/win32/menurc/fontgrouphdr)
-  + side note: the string `FONTDIR` is the type of this resource, it doesn't have an associated integer ID like most other Windows-defined resources do
-
-Within the `FONTDIR` resource, there is a [`FONTDIRENTRY`](https://learn.microsoft.com/en-us/windows/win32/menurc/fontdirentry) for each font, containing much of the information in the `.fnt` header. In fact, the data actually matches the version 1 `.fnt` header almost exactly, with only a few differences at the end:
-
-<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;">.fnt version 1      FONTDIRENTRY
-<span></span>
-<span style="background: rgba(0,255,0,.1);">....version....</span> == <span style="background: rgba(0,255,0,.1);">...dfVersion...</span>
-<span style="background: rgba(0,0,255,.1);">......size.....</span> == <span style="background: rgba(0,0,255,.1);">.....dfSize....</span>
-<span style="background: rgba(150,0,255,.1);">...copyright...</span> == <span style="background: rgba(150,0,255,.1);">..dfCopyright..</span>
-<span style="background: rgba(0,255,0,.1);">......type.....</span> == <span style="background: rgba(0,255,0,.1);">.....dfType....</span>
-<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span> == <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
-<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span> == <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
-<span style="background: rgba(0,0,255,.1);">.device_offset.</span> == <span style="background: rgba(0,0,255,.1);">....dfDevice...</span>
-<span style="background: rgba(150,0,255,.1);">..face_offset..</span> == <span style="background: rgba(150,0,255,.1);">.....dfFace....</span>
-<span style="background: rgba(0,255,0,.1);">....bits_ptr...</span> =? <span style="background: rgba(0,255,0,.1);">...dfReserved..</span>
-<span style="background: rgba(0,0,255,.1);">..bits_offset..</span>    <span style="background: rgba(255,0,0,.1);">NUL-terminated device name.</span>
-                   <span style="background: rgba(255,150,0,.1);">NUL-terminated font face name.</span></code></pre>
-<p style="margin:0; text-align: center;"><i class="caption">The formats match, except <code>FONTDIRENTRY</code> does not include <code>bits_offset</code> and instead it has trailing variable-length strings</i></p>
-
-This documented `FONTDIRENTRY` *is* what the obsolete 16-bit version of `rc.exe` outputs: 113 bytes plus two variable-length `NUL`-terminated strings at the end. However, starting with the 32-bit resource compiler, contrary to the documentation, `rc.exe` now outputs `FONTDIRENTRY` as 148 bytes plus the two variable-length `NUL`-terminated strings.
-
-You might notice that this 148 number has come up before; it's the size of the `.fnt` version 3 header. So, starting with the 32-bit `rc.exe`, `FONTDIRENTRY` as-written-by-the-resource-compiler is effectively the first 148 bytes of the `.fnt` file, plus the two strings located at the positions given by the `device_offset` and `face_offset` fields. Or, at least, that's clearly the intention, but this is labeled 'miscompilation' for a reason.
-
-Let's take this example `.fnt` file for instance:
-
-<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;"><span style="background: rgba(0,255,0,.1);">....version....</span>
-<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
-<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
-<span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">.device_offset.</span> ───► <span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">some device.</span>
-<span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">..face_offset..</span> ───► <span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">some font face.</span>
-<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
-<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
-<span style="background: rgba(150,0,255,.1);">...reserved1...</span>
-<span style="background: rgba(150,0,255,.1);">...............</span>
-<span style="background: rgba(150,0,255,.1);">...............</span></code></pre>
-
-When compiled with the old 16-bit Windows RC compiler, `some device` and `some font face` are written as trailing strings in the `FONTDIRENTRY` (as expected), but when compiled with the modern `rc.exe`, both strings get written as 0-length (only a `NUL` terminator). The reason why is rather silly, so let's go through it. Here's the documented `FONTDIRENTRY` format again, this time with some annotations:
-
-<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;">      FONTDIRENTRY
-<span></span>
--113 <span style="background: rgba(0,255,0,.1);">...dfVersion...</span> (2 bytes)
--111 <span style="background: rgba(0,0,255,.1);">.....dfSize....</span> (4 bytes)
--107 <span style="background: rgba(150,0,255,.1);">..dfCopyright..</span> (60 bytes)
- -47 <span style="background: rgba(0,255,0,.1);">.....dfType....</span> (2 bytes)
-     <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
-     <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
- -12 <span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">....dfDevice...</span> (4 bytes)
-  -8 <span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">.....dfFace....</span> (4 bytes)
-  -4 <span style="background: rgba(0,255,0,.1);">...dfReserved..</span> (4 bytes)</code></pre>
-<p style="margin:0; text-align: center;"><i class="caption">The numbers on the left represent the offset from the end of the <code>FONTDIRENTRY</code> data to the start of the field</i></p>
-
-It turns out that the Windows RC compiler uses the offset *from the end of `FONTDIRENTRY`* to get the values of the `dfDevice` and `dfFace` fields. This works fine when those offsets are unchanging, but, as we've seen, the Windows RC compiler now uses an undocumented `FONTDIRENTRY` definition that is is 35 bytes longer, but these hardcoded offsets were never updated accordingly. This means that the Windows RC compiler is actually attempting to read the `dfDevice` and `dfFace` fields from this part of the `.fnt` version 3 header:
-
-<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;">    <span style="background: rgba(0,255,0,.1);">....version....</span>
-    <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
-    <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
-    <span style="background: rgba(0,0,255,.1);">.device_offset.</span>
-    <span style="background: rgba(150,0,255,.1);">..face_offset..</span>
-    <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
-    <span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
--12 <span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(255,50,50,1);">...reserved1...</span> ───► <span style="background: rgba(255,0,0,.1); outline: 2px dotted rgba(255,50,50,1);">???</span>
- -8 <span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(255,150,0,1);">...............</span> ───► <span style="background: rgba(255,150,0,.1); outline: 2px dotted rgba(255,150,0,1);">???</span>
- -4 <span style="background: rgba(150,0,255,.1);">...............</span></code></pre>
-<p style="margin:0; text-align: center;"><i class="caption">The Windows RC compiler reads data from the <code>reserved1</code> field and interprets it as <code>dfDevice</code> and <code>dfFace</code></i></p>
-
-Because this bug happens to end up reading data from a reserved field, it's very likely for that data to just contain zeroes, which means it will try to read the `NUL`-terminated strings starting at offset `0` from the start of the file. As a second coincidence, the first field of a `.fnt` file is a `u16` containing the version, and the only versions I'm aware of are:
-
-- Version 1, `0x0100` encoded as little-endian, so the bytes at offset 0 are `00 01`
-- Version 2, `0x0200` encoded as little-endian, so the bytes at offset 0 are `00 02`
-- Version 3, `0x0300` encoded as little-endian, so the bytes at offset 0 are `00 03`
-
-In all three cases, the first byte is `0x00`, meaning attempting to read a `NUL` terminated string from offset `0` always ends up with a 0-length string for all known/valid `.fnt` versions. So, in practice, the Windows RC compiler almost always writes the trailing `szDeviceName` and `szFaceName` strings as 0-length strings.
-
-<p><aside class="note">
-
-As a final coincidence, the offset here is `-12` and `-8` only because the original `FONTDIRENTRY` definition chose to omit the `bits_offset` field from the `.fnt` version 1 format. If it contained the full `.fnt` version 1 header data, the `dfDevice` offset would have been `-16`, meaning it would have ended up interpreting the `color_ptr` field of the `.fnt` version 3 format as an offset instead, likely leading to more bogus (&gt; 0-length) strings being written to the trailing data (and therefore possibly leading to this bug being found/fixed earlier).
-
-</aside></p>
-
-This behavior can be confirmed by crafting a `.fnt` file with actual offsets to `NUL`-terminated strings within the reserved data field that the Windows RC compiler erroneously reads from:
-
-<pre><code class="language-none" style="margin: 0 auto; width: fit-content; display:block;"><span style="background: rgba(0,255,0,.1);">....version....</span>
-<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
-<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
-<span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">.device_offset.</span> ───► <span style="background: rgba(0,0,255,.1); outline: 2px dotted rgba(50,50,255,1);">some device.</span>
-<span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">..face_offset..</span> ───► <span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(150,50,255,1);">some font face.</span>
-<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
-<span style="background: rgba(150,150,150,.1);">. . . etc . . .</span>
-<span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(255,50,50,1);">...reserved1...</span> ───► <span style="background: rgba(255,0,0,.1); outline: 2px dotted rgba(255,50,50,1);">i dare you to read me.</span>
-<span style="background: rgba(150,0,255,.1); outline: 2px dotted rgba(255,150,0,1);">...............</span> ───► <span style="background: rgba(255,150,0,.1); outline: 2px dotted rgba(255,150,0,1);">you wouldn't.</span>
-<span style="background: rgba(150,0,255,.1);">...............</span></code></pre>
-
-Compiling such a `FONT` resource, we do indeed see that the strings `i dare you to read me` and `you wouldn't` are written to the `FONTDIRENTRY` for this `FONT` rather than `some device` and `some font face`.
-
-#### Does any of this even matter?
-
-Well, no, not really. The whole concept of the `FONTDIR` containing information about all the `RT_FONT` resources is something of a historical relic, likely only relevant when resources were constrained enough that having an overview of the font data all in once place allowed for optimization opportunities that made a difference.
-
-From what I can tell, though, on modern Windows, the `FONTDIR` resource is ignored entirely:
-- Linker implementations will happily link `.res` files that contain `RT_FONT` resources with no `FONTDIR` resource
-- Windows will happily load/install `.fon` files that contain `RT_FONT` resources with no `FONTDIR` resource
-
-However, there are a few caveats...
-
-#### Misuse of the `FONT` resource for non-`.fnt` fonts
-
-I'm not sure how prevalent this is, but it can be forgiven that someone might not realize that `FONT` is only intended to be used with a font format that has been obsolete for multiple decades, and try to use the `FONT` resource with a modern font format.
-
-In fact, there is one Microsoft-provided [`Windows-classic-samples`](https://github.com/microsoft/Windows-classic-samples) example program that uses `FONT` resources with `.ttf` files to include custom fonts in a program: [`Win7Samples/multimedia/DirectWrite/CustomFont`](https://github.com/microsoft/Windows-classic-samples/tree/main/Samples/Win7Samples/multimedia/DirectWrite/CustomFont). This is meant to be an example of using [the DirectWrite APIs described here](https://learn.microsoft.com/en-us/windows/win32/directwrite/custom-font-collections), but this is almost certainly a misuse of the `FONT` resource. [Other examples](https://github.com/microsoft/Windows-classic-samples/tree/main/Samples/DirectWriteCustomFontSets), however, use user-defined resource types for including `.ttf` font files, which seems like the correct choice.
-
-When using non-`.fnt` files with the `FONT` resource, the resulting `FONTDIRENTRY` will be made up of garbage, since it effectively just takes the first 148 bytes of the file and stuffs it into the `FONTDIRENTRY` format. An additional complication with this is that the Windows RC compiler will still try to read `NUL`-terminated strings using the offsets from the `dfDevice` and `dfFace` fields (or at least, where it thinks they are). These offset values, in turn, will have much more variance since the format of `.fnt` and `.ttf` are so different.
-
-This means that using `FONT` with `.ttf` files may lead to errors, since...
-
-#### "Negative" offsets lead to errors
-
-For who knows what reason, the `dfDevice` and `dfFace` values are seemingly treated as signed integers, even though they ostensibly contain an offset from the beginning of the `.fnt` file, so a negative value makes no sense. When the sign bit is set in either of these fields, the Windows RC compiler will error with:
-
-```
-fatal error RW1023: I/O error seeking in file
-```
-
-This means that, for some subset of valid `.ttf` files (or other non-`.fnt` font formats), the Windows RC compiler will fail with this error.
-
-#### Other oddities and crashes
-
-- If the font file is 140 bytes or fewer, the Windows RC compiler seems to default to a `dfFace` of `0` (as the [incorrect] location of the `dfFace` field is past the end of the file).
-- If the file is 75 bytes or smaller with no `0x00` bytes, the `FONTDIR` data for it will be 149 bytes (the first `n` being the bytes from the file, then the rest are `0x00` padding bytes). After that, there will be `n` bytes from the file again, and then a final `0x00`.
-- If the file is between 76 and 140 bytes long with no `0x00` bytes, the Windows RC compiler will crash.
-
-#### `resinator`'s behavior
-
-I'm still not quite sure what the best course of action is here. I've [written up what I see as the possibilities here](https://squeek502.github.io/resinator/windows/resources/font.html#so-really-what-should-go-in-the-fontdir), and for now I've gone with what I'm calling the "semi-compatibility while avoiding the sharp edges" approach:
-
-> Do something similar enough to the Win32 compiler in the common case, but avoid emulating the buggy behavior where it makes sense. That would look like a `FONTDIRENTRY` with the following format:
->
-> - The first 148 bytes from the file verbatim, with no interpretation whatsoever, followed by two `NUL` bytes (corresponding to 'device name' and 'face name' both being zero length strings)
->
-> This would allow the `FONTDIR` to match byte-for-byte with the Win32 RC compiler in the common case (since very often the misinterpreted `dfDevice`/`dfFace` will be `0` or point somewhere outside the bounds of the file and therefore will be written as a zero-length string anyway), and only differ in the case where the Win32 RC compiler writes some bogus string(s) to the `szDeviceName`/`szFaceName`.
->
-> This also enables the use-case of non-`.FNT` files without any loose ends.
-
-In short: write the new/undocumented `FONTDIRENTRY` format, but avoid the crashes, avoid the negative integer-related errors, and always write `szDeviceName` and `szFaceName` as 0-length.
 
 </div>
 
@@ -3611,211 +3699,6 @@ Ideally, a warning would be emitted in cases where the Windows RC compiler would
 </div>
 
 <div class="bug-quirk-box">
-<span class="bug-quirk-category">preprocessor bug/quirk, parser bug/quirk</span>
-
-### Multiline strings don't behave as expected/documented
-
-Within the [`STRINGTABLE` resource documentation](https://learn.microsoft.com/en-us/windows/win32/menurc/stringtable-resource) we see this statement:
-
-> The string [...] must occupy a single line in the source file (unless a '&bsol;' is used as a line continuation).
-
-<p><aside class="note">
-
-Note: While this documentation is for `STRINGTABLE`, it actually applies to string literals in `.rc` files generally. In other words, there's nothing special about how `STRINGTABLE` handles string literals, and the bugs/quirks described below apply to all resource types.
-
-</aside></p>
-
-This is similar to the rules around C strings:
-
-<div class="short-rc-and-result">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```c style="display: flex; flex-direction: column; justify-content: center; flex-grow: 1; margin-top: 0;"
-char *my_string = "Line 1
-Line 2";
-```
-
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```resinatorerror style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
-multilinestring.c:1:19: error: missing terminating '"' character
-char *my_string = "Line 1
-                  ^
-```
-
-</div>
-</div>
-
-<p style="margin-top: 0; text-align: center;"><i class="caption">Splitting a string across multiple lines without using <code>&bsol;</code> is an error in C</i></p>
-
-<div class="short-rc-and-result">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```c style="display: flex; flex-direction: column; justify-content: center; flex-grow: 1; margin-top: 0;"
-char *my_string = "Line 1 \
-Line 2";
-```
-
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<p style="margin-top: 0; margin-bottom: .5em;"><code>printf("%s\n", my_string);</code> results in:</p>
-
-```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;"
-Line 1 Line 2
-```
-
-</div>
-</div>
-
-And yet, contrary to the documentation, splitting a string across multiple lines without `\` continuations *is not an error* in the Windows RC compiler. Here's an example:
-
-```rc
-1 RCDATA {
-
-"foo
-bar"
-
-}
-```
-
-This will successfully compile, and the data of the `RCDATA` resource will end up as
-
-<pre style="overflow: visible; padding-top: 3.5em; padding-bottom: 3.5em;"><code class="language-none"><span class="token_string">66 6F 6F</span> <span style="outline: 2px dotted orange;">20</span> <span style="outline: 2px dotted red;">0A</span> <span class="token_string">62 61 72</span>   <span class="token_string">foo</span><span style="outline: 2px dotted orange; position:relative; display:inline-block;"> <span class="hexdump-tooltip below">space<i></i></span></span><span style="outline: 2px dotted red; position:relative; display:inline-block;">.<span class="hexdump-tooltip">\n<i></i></span></span><span class="token_string">bar</span></code></pre>
-
-I'm not sure why this is allowed, and I also don't have an explanation for why a space character sneaks into the resulting data out of nowhere. It's also worth noting that whitespace is collapsed in these should-be-invalid multiline strings. For example, this:
-
-```rc
-"foo
-
-    bar"
-```
-
-will get compiled into exactly the same data as above (with only a space and a newline between `foo` and `bar`).
-
-</aside></p>
-
-But, this on its own is only a minor nuisance from the perspective of implementing a resource compiler&mdash;it is undocumented behavior, but it's pretty easy to account for. The real problems start when someone actually uses `\` as intended.
-
-#### The collapse of whitespace is imminent
-
-C pop quiz: what will get printed in this example (i.e. what will `my_string` evaluate to)?
-
-```c
-char *my_string = "Line 1 \
-                   Line 2";
-
-#include <stdio.h>
-
-int main() {
-  printf("%s\n", my_string);
-  return 0;
-}
-```
-
-Let's compile it with a few different compilers to find out:
-
-```shellsession
-> zig run multilinestring.c -lc
-Line 1                    Line 2
-
-> clang multilinestring.c
-> a.exe
-Line 1                    Line 2
-
-> cl.exe multilinestring.c
-> multilinestring.exe
-Line 1                    Line 2
-```
-
-That is, the whitespace preceding "Line 2" is included in the string literal.
-
-<p><aside class="note">
-
-Note: In most C compiler implementations, the `\` is processed and removed during the preprocessing step. For example, here's the result when running the input through the `clang` preprocessor:
-
-```shellsession
-> clang -E -xc multilinestring.c
-# 1 "multilinestring.c" 2
-char *my_string = "Line 1                    Line 2";
-```
-
-Something odd, though, is that this is not how the MSVC compiler works. When running its preprocessor, we end up with this:
-
-```shellsession
-> cl.exe /E multilinestring.c
-#line 1 "multilinestring.c"
-char *my_string = "Line 1 \
-                   Line 2";
-```
-
-so in the MSVC implementation, it's up to the C parser to handle the `\`. This is not fully relevant to the Windows RC compiler, but it was surprising to me.
-
-</aside></p>
-
-However, the Windows RC compiler behaves differently here. If we pass the same example through *its* preprocessor, we end up with:
-
-```c
-#line 1 "multilinestring.c"
-char *my_string = "Line 1 \
-Line 2";
-```
-
-1. The `\` remains (similar to the MSVC compiler, see the note above)
-2. The whitespace before "Line 2" is removed
-
-So the value of `my_string` would be `Line 1 Line 2` (well, not really, since `char *my_string = ` doesn't have a meaning in `.rc` files, but you get the idea). This divergence in behavior from C has practical consequences. In [this `.rc` file](https://github.com/microsoft/Windows-classic-samples/blob/main/Samples/Win7Samples/winui/shell/appshellintegration/NonDefaultDropMenuVerb/NonDefaultDropMenuVerb.rc) from one of the [Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples) example programs, we see the following, which takes advantage of the `rc.exe`-preprocessor-specific-whitespace-collapsing behavior:
-
-```rc
-STRINGTABLE 
-BEGIN
-    // ...
-    IDS_MESSAGETEMPLATEFS   "The drop target is %s.\n\
-                            %d files/directories in HDROP\n\
-                            The path to the first object is\n\
-                            \t%s."
-    // ...
-END
-```
-
-Plus, in certain circumstances, this difference between `rc.exe` and C (like [other differences to C](#all-operators-have-equal-precedence)) can lead to bugs. This is a rather contrived example, but here's one way things could go wrong:
-
-```c
-// In foo.h
-#define FOO_TEXT "foo \
-                  bar"
-#define IDC_BUTTON_FOO 1001
-```
-```rc
-// In foo.rc
-#include "foo.h"
-
-1 DIALOGEX 0, 0, 275, 280
-BEGIN
-    PUSHBUTTON FOO_TEXT, IDC_BUTTON_FOO, 7, 73, 93, 14
-END
-```
-```c
-// In main.c
-#include "foo.h"
-
-// ...
-    HWND hFooBtn = GetDlgItem(hDlg, IDC_BUTTON_FOO);
-    // Let's say the button text was changed while it was hovered
-    // and now we want to set it back to the default
-    SendMessage(hFooBtn, WM_SETTEXT, 0, (LPARAM) _T(FOO_TEXT));
-// ...
-```
-
-In this example, the button defined in the `DIALOGEX` would start with the text `foo bar`, since that is the value that the Windows RC compiler resolves `FOO_TEXT` to be, but the `SendMessage` call would then set the text to <code>foo&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;bar</code>, since that's what the C compiler resolves `FOO_TEXT` to be.
-
-#### `resinator`'s behavior
-
-`resinator` uses the [Aro preprocessor](https://github.com/Vexu/arocc), which means it acts like a C compiler. In the future, `resinator` will likely fork Aro ([mostly to support UTF-16 encoded files](https://github.com/squeek502/resinator/issues/5)), which could allow matching the behavior of `rc.exe` in this case as well.
-
-</div>
-
-<div class="bug-quirk-box">
 <span class="bug-quirk-category">parser bug/quirk</span>
 
 ### All operators have equal precedence
@@ -3833,101 +3716,6 @@ Instead of detailing this bug/quirk, though, I'm just going to link to Raymond C
 #### `resinator`'s behavior
 
 `resinator` matches the behavior of the Windows RC compiler with regards to operator precedence (i.e. it also contains an operator-precedence-mismatch between the preprocessor and the compiler)
-
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">parser bug/quirk, utterly baffling</span>
-
-### Escaping quotes is fraught
-
-From the [`STRINGTABLE` resource docs](https://learn.microsoft.com/en-us/windows/win32/menurc/stringtable-resource):
-
-> To embed quotes in the string, use the following sequence: `""`. For example, `"""Line three"""` defines a string that is displayed as follows:
-> ```
-> "Line three"
-> ```
-
-This is different from C, where `\"` is used to escape quotes within a string literal, so in C to get `"Line three"` you'd do `"\"Line three\""`.
-
-<p><aside class="note">
-
-Note: I have no idea why the method for quote escaping would differ from C. The only thing I can think of is that it would allow for the use of `\` within string literals in order to make specifying paths in string literals more convenient, but that can't be true because in e.g.
-
-```c
-"some\new\path"
-```
-
-the `\n` gets parsed into `0x0A`.
-
-</aside></p>
-
-This difference, though, can lead to some really bizarre results, since the preprocessor *still uses the C escaping rules*. Take this simple example:
-
-```none
-"\""BLAH"
-```
-
-Here's how that is seen from the perspective of the preprocessor:
-
-<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">string<i></i></span><span class="subject"><span class="token_string">"\""</span></span></span><span class="annotation"><span class="desc">identifier<i></i></span><span class="subject"><span class="token_identifier">BLAH</span></span></span><span class="annotation"><span class="desc">string (unfinished)<i></i></span><span class="subject"><span class="token_string">"</span></span></span></code></pre>
-
-And from the perspective of the compiler:
-
-<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">string<i></i></span><span class="subject"><span class="token_string">"\""BLAH"</span></span></span></code></pre>
-
-So, following from this, say you had this `.rc` file:
-
-```rc
-#define BLAH "hello"
-
-1 RCDATA { "\""BLAH" }
-```
-
-Since we know the preprocessor sees `BLAH` as an identifier and we've done `#define BLAH "hello"`, it will replace `BLAH` with `"hello"`, leading to this result:
-
-```rc
-1 RCDATA { "\"""hello"" }
-```
-
-which would now be parsed by the compiler as:
-
-<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">string<i></i></span><span class="subject"><span class="token_string">"\"""</span></span></span><span class="annotation"><span class="desc">identifier<i></i></span><span class="subject"><span class="token_identifier">hello</span></span></span><span class="annotation"><span class="desc">string<i></i></span><span class="subject"><span class="token_string">""</span></span></span></span></span></span></code></pre>
-
-and lead to a compile error:
-
-```
-test.rc(3) : error RC2104 : undefined keyword or key name: hello
-```
-
-This is just one example, but the general disagreement around escaped quotes between the preprocessor and the compiler can lead to some really unexpected error messages.
-
-#### Wait, but what actually happens to the backslash?
-
-Backing up a bit, I said that the compiler sees `"\""BLAH"` as one string literal token, so:
-
-<pre class="annotated-code"><code class="language-c" style="white-space: inherit;">1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span> <span class="annotation"><span class="desc">string<i></i></span><span class="subject"><span class="token_string" style="outline: 2px dotted rgba(150,150,150,0.5)">"\""BLAH"</span></span></span> <span class="token_punctuation">}</span></code></pre>
-
-If we compile this, then the data of this `RCDATA` resource ends up as:
-
-```
-"BLAH
-```
-
-That is, the `\` fully drops out and the `""` is treated as an escaped quote. This seems to some sort of special case, as this behavior is not present for other unrecognized escape sequences, e.g. `"\k"` will end up as `\k` when compiled, and `"\"` will end up as `\`.
-
-
-#### `resinator`'s behavior
-
-Using `\"` within string literals is always an error, since (as mentioned) it can lead to things like unexpected macro expansions and hard-to-understand errors when the preprocessor and the compiler disagree.
-
-```resinatorerror
-test.rc:1:13: error: escaping quotes with \" is not allowed (use "" instead)
-1 RCDATA { "\""BLAH" }
-            ^~
-```
-
-This may change if it turns out `\"` is commonly used in the wild, but that seems unlikely to be the case.
 
 </div>
 
@@ -3985,315 +3773,6 @@ On first glance, this seems like a bug, but there may be some historical reason 
 #### `resinator`'s behavior
 
 `resinator` matches the behavior of the Windows RC compiler, translating `\a` to `0x08`.
-
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">parser bug/quirk, miscompilation</span>
-
-### Yes, that `MENU` over there (vague gesturing)
-
-As established in the intro, resource definitions typically have an `id`, like so:
-
-<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">id<i></i></span><span class="subject">1</span></span> <span class="token_identifier">FOO</span> <span class="token_punctuation">{</span> <span class="token_string">"bar"</span> <span class="token_punctuation">}</span></code></pre>
-
-The `id` can be either a number ("ordinal") or a string ("name"), and the type of the `id` is inferred by its contents. This mostly works as you'd expect:
-
-- If the `id` is all digits, then it's a number/ordinal
-- If the `id` is all letters, then it's a string/name
-- If the `id` is a mix of digits and letters, then it's a string/name
-
-Here's a few examples:
-
-<pre><code class="language-none"> 123    ───►  Ordinal: <span class="token_number">123</span>
- ABC    ───►  Name: <span class="token_string">ABC</span>
-123ABC  ───►  Name: <span class="token_string">123ABC</span></code></pre>
-
-This is relevant, because when defining `DIALOG`/`DIALOGEX` resources, there is an optional `MENU` statement that can specify the `id` of a separately defined `MENU`/`MENUEX` resource to use. From [the `DIALOGEX` docs](https://learn.microsoft.com/en-us/windows/win32/menurc/dialogex-resource):
-
-<blockquote>
-<table style="width: 100%; text-align: left;">
-  <thead>
-    <tr>
-      <th>Statement</th>
-      <th>Description</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td><b>MENU</b> <i>menuname</i></td>
-      <td>Menu to be used. This value is either the name of the menu or its integer identifier.</td>
-    </tr>
-  </tbody>
-</table>
-</blockquote>
-
-Here's an example of that in action, where the `DIALOGEX` is attempting to specify that the `MENUEX` with the `id` of `1ABC` should be used:
-
-<pre><code class="language-c" style="display:block;"><span class="token_identifier" style="outline: 2px dotted orange;">1ABC</span> <span class="token_keyword">MENUEX</span>  <span class="token_function">◄╍╍╍╍╍╍╍╍╍╍╍╍╍╍┓</span>
-<span style="opacity: 50%;">{</span>                           <span class="token_function">┇</span>
-<span style="opacity: 50%;">  // ...</span>                    <span class="token_function">┇</span>
-<span style="opacity: 50%;">}</span>                           <span class="token_function">┇</span>
-                            <span class="token_function">┇</span>
-<span style="opacity: 50%;">1 DIALOGEX 0, 0, 640, 480</span>   <span class="token_function">┇</span>
-  <span class="token_keyword">MENU</span> <span class="token_identifier" style="outline: 2px dotted orange;">1ABC</span>  <span class="token_function">╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍┛</span>
-<span style="opacity: 50%;">{
-  // ...
-}</span></code></pre>
-
-However, this is not what actually occurs, as for some reason, the `MENU` statement has different rules around inferring the type of the `id`&mdash;for the `MENU` statement, whenever the first character is a number, then the whole `id` is interpreted as a number no matter what.
-
-The value of this "number" is determined using the same bogus methodology detailed in ["*Non-ASCII digits in number literals*"](#non-ascii-digits-in-number-literals), so in the case of `1ABC`, the value works out to 2899:
-
-<div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(3, 1fr);">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```none style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
-1ABC
-```
-
-</div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
-'1' - '0' = 1
-'A' - '0' = 17
-'B' - '0' = 18
-'C' - '0' = 19
-```
-
-</div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
- 1 * 1000 = 1000
- 17 * 100 = 1700
-  18 * 10 =  180
-   19 * 1 =   19
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
-            2899
-```
-
-</div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">"numeric" id</i></div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">numeric value of each "digit"</i></div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">numeric value of the id</i></div>
-</div>
-
-Unlike ["*Non-ASCII digits in number literals*"](#non-ascii-digits-in-number-literals), though, it's now also possible to include characters in a "number" literal that have a *lower* ASCII value than the `'0'` character, meaning that attempting to get the numeric value for such a 'digit' will induce wrapping `u16` overflow:
-
-<div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(3, 1fr);">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```none style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
-1!
-```
-
-</div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-<pre style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"><code class="language-c"><span class="token_string">'1'</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_operator">-</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_string">'0'</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_operator">=</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_number">1</span><span class="token_ansi_c_whitespace token_whitespace">
-</span><span class="token_string">'!'</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_operator">-</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_string">'0'</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_operator">=</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_warning">-15</span><span class="token_ansi_c_whitespace token_whitespace">
-      </span><span class="token_warning">-15</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_operator">=</span><span class="token_ansi_c_whitespace token_whitespace"> </span><span class="token_number">65521</span><span class="token_ansi_c_whitespace token_whitespace">
-</span></code></pre>
-
-</div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
-    1 * 10 =    10
- 65521 * 1 = 65521
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
-             65531
-```
-
-</div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">"numeric" id</i></div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">numeric value of each "digit"</i></div>
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">numeric value of the id</i></div>
-</div>
-
-#### This is always a miscompilation
-
-In the following example using the same `1ABC` ID as above:
-
-```rc
-// In foo.rc
-1ABC MENU
-BEGIN
-  POPUP "Menu from .rc"
-  BEGIN
-    MENUITEM "Open File", 1
-  END
-END
-
-1 DIALOGEX 0, 0, 275, 280
-  CAPTION "Dialog from .rc"
-  MENU 1ABC
-BEGIN
-END
-```
-
-```c
-// In main.c
-// ...
-    HWND result = CreateDialogParamW(g_hInst, MAKEINTRESOURCE(1), hwnd, DialogProc, (LPARAM)NULL);
-// ...
-```
-
-This `CreateDialogParamW` call will fail with `The specified resource name cannot be found in the image file` because when loading the dialog, it will attempt to look for a menu resource with an integer ID of `2899`.
-
-If we add such a `MENU` to the `.rc` file:
-
-```rc
-2899 MENU
-BEGIN
-  POPUP "Wrong menu from .rc"
-  BEGIN
-    MENUITEM "Destroy File", 1
-  END
-END
-```
-
-then the dialog will successfully load with this new menu, but it's pretty obvious this is *not* what was intended:
-
-<div style="text-align: center;">
-<img style="margin-left:auto; margin-right:auto; display: block;" src="/images/every-rc-exe-bug-quirk-probably/rc-wrong-menu.png">
-<i class="caption">The misinterpretation of the ID can (at best) lead to an unexpected menu being loaded</i>
-</div>
-
-#### A related, but inconsequential, inconsistency
-
-As mentioned in ["*Special tokenization rules for names/IDs*"](#special-tokenization-rules-for-names-ids), when the `id` of a resource is a string/name, it is uppercased before being written to the `.res` file. This uppercasing is *not* done for the `MENU` statement of a `DIALOG`/`DIALOGEX` resource, so in this example:
-
-<pre><code class="language-c" style="display:block;"><span class="token_identifier">abc</span> <span class="token_keyword">MENUEX</span>
-<span style="opacity: 50%;">{</span>
-<span style="opacity: 50%;">  // ...</span>
-<span style="opacity: 50%;">}</span>
-
-<span style="opacity: 50%;">1 DIALOGEX 0, 0, 640, 480</span>
-  <span class="token_keyword">MENU</span> <span class="token_identifier">abc</span>
-<span style="opacity: 50%;">{
-  // ...
-}</span></code></pre>
-
-The `id` of the `MENUEX` resource would be compiled as `ABC`, but the `DIALOGEX` would write the `id` of its menu as `abc`. This ends up not mattering, though, because it appears that `LoadMenu` does a case-insensitive lookup for string IDs.
-
-#### `resinator`'s behavior
-
-`resinator` avoids the miscompilation and treats the `id` parameter of `MENU` statements in `DIALOG`/`DIALOGEX` resources exactly the same as the `id` of `MENU` resources.
-
-```resinatorerror
-test.rc:3:8: warning: the id of this menu would be miscompiled by the Win32 RC compiler
-  MENU 1ABC
-       ^~~~
-test.rc:3:8: note: the Win32 RC compiler would evaluate the id as the ordinal/number value 2899
-
-test.rc:3:8: note: to avoid the potential miscompilation, the first character of the id should not be a digit
-```
-
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">parser bug/quirk</span>
-
-### If you're not last, you're irrelevant
-
-Many resource types have optional statements that can be specified between the resource type and the beginning of its body, e.g.
-
-```rc
-1 ACCELERATORS
-  LANGUAGE 0x09, 0x01
-  CHARACTERISTICS 0x1234
-  VERSION 1
-{
-  // ...
-}
-```
-
-Specifying multiple statements of the same type within a single resource definition is allowed, and the last occurrence of each statement type is the one that takes precedence, so the following would compile to the exact same `.res` as the example above:
-
-```rc
-1 ACCELERATORS
-  CHARACTERISTICS 1
-  LANGUAGE 0xFF, 0xFF
-  LANGUAGE 0x09, 0x01
-  CHARACTERISTICS 999
-  CHARACTERISTICS 0x1234
-  VERSION 999
-  VERSION 1
-{
-  // ...
-}
-```
-
-This is not necessarily a problem on its own (although I think it should at least be a warning), but it can inadvertently lead to some bizarre behavior, as we'll see in the next bug/quirk.
-
-
-#### `resinator`'s behavior
-
-`resinator` matches the Windows RC compiler behavior, but emits a warning for each ignored statement:
-
-```resinatorerror
-test.rc:2:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
-  CHARACTERISTICS 1
-  ^~~~~~~~~~~~~~~~~
-test.rc:3:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
-  LANGUAGE 0xFF, 0xFF
-  ^~~~~~~~~~~~~~~~~~~
-test.rc:5:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
-  CHARACTERISTICS 999
-  ^~~~~~~~~~~~~~~~~~~
-test.rc:7:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
-  VERSION 999
-  ^~~~~~~~~~~
-```
-
-</div>
-
-<div class="bug-quirk-box">
-<span class="bug-quirk-category">parser bug/quirk, miscompilation</span>
-
-### Once a number, always a number
-
-The behavior described in ["*Yes, that `MENU` over there (vague gesturing)*"](#yes-that-menu-over-there-vague-gesturing) can also be induced in both `CLASS` and `MENU` statements of `DIALOG`/`DIALOGEX` resources via redundant statements. As seen in ["*If you're not last, you're irrelevant*"](#if-you-re-not-last-you-re-irrelevant), multiple statements of the same type are allowed to be specified without much issue, but in the case of `CLASS` and `MENU`, if any of the duplicate statements are interpreted as a number, then the value of last statement of its type (the only one that matters) *is always interpreted as a number no matter what it contains*.
-
-<pre><code class="language-c" style="display:block;"><span style="opacity: 50%;">1 DIALOGEX 0, 0, 640, 480</span>
-  <span class="token_keyword">MENU</span> <span class="token_identifier">123</span> <span class="token_comment">// ignored, but causes the string below to be evaluated as a number</span>
-  <span class="token_keyword">MENU</span> <span class="token_identifier">IM_A_STRING_I_SWEAR</span>  <span class="token_function">────►</span>  <span class="token_function">8360</span>
-  <span class="token_keyword">CLASS</span> <span class="token_identifier">123</span> <span class="token_comment">// ignored, but causes the string below to be evaluated as a number</span>
-  <span class="token_keyword">CLASS</span> <span class="token_string">"Seriously, I'm a string"</span>  <span class="token_function">────►</span>  <span class="token_function">55127</span>
-<span style="opacity: 50%;">{
-  // ...
-}</span></code></pre>
-
-The algorithm for coercing the strings to a number is the same as the one outlined in ["*Yes, that `MENU` over there (vague gesturing)*"](#yes-that-menu-over-there-vague-gesturing), and, for the same reasons discussed there, this too is always a miscompilation.
-
-#### `resinator`'s behavior
-
-`resinator` avoids the miscompilation and emits warnings:
-
-```resinatorerror
-test.rc:2:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
-  MENU 123
-  ^~~~~~~~
-test.rc:4:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
-  CLASS 123
-  ^~~~~~~~~
-test.rc:5:9: warning: this class would be miscompiled by the Win32 RC compiler
-  CLASS "Seriously, I'm a string"
-        ^~~~~~~~~~~~~~~~~~~~~~~~~
-test.rc:5:9: note: the Win32 RC compiler would evaluate it as the ordinal/number value 55127
-
-test.rc:5:9: note: to avoid the potential miscompilation, only specify one class per dialog resource
-
-test.rc:3:8: warning: the id of this menu would be miscompiled by the Win32 RC compiler
-  MENU IM_A_STRING_I_SWEAR
-       ^~~~~~~~~~~~~~~~~~~
-test.rc:3:8: note: the Win32 RC compiler would evaluate the id as the ordinal/number value 8360
-
-test.rc:3:8: note: to avoid the potential miscompilation, only specify one menu per dialog resource
-```
 
 </div>
 
@@ -4587,6 +4066,73 @@ With the `TOOLBAR` and `BITMAP` resources together, and with a `CreateToolbarEx`
 
 </div>
 
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">utterly baffling</span>
+
+### Certain `DLGINCLUDE` filenames break the preprocessor
+
+The following script, when encoded as Windows-1252, will cause the `rc.exe` preprocessor to freak out and output what seems to be garbage. 
+
+```rc
+1 DLGINCLUDE "\001ýA\001\001\x1aý\xFF"
+```
+
+<p><aside class="note">
+
+Note: Certain things about the input can be changed and the bug still reproduces (e.g. the values of the octal escape sequences), but some seemingly innocuous changes can stop the bug from reproducing, like changing the case of the `\x1a` escape sequence to `\x1A`.
+
+</aside></p>
+
+```shellsession
+> rc.exe /p test.rc
+
+Preprocessed file created in: test.rcpp
+```
+
+In this particular case, it outputs mostly Chinese characters. `test.rcpp` looks like this (note: the `rc.exe` preprocessor outputs UTF-16):
+
+```c
+#line 1 "C:\\Users\\Ryan\\Programming\\Zig\\resinator\\tmp\\RCa18588"
+#line 1 "test.rc"
+#line 1 "test.rc"
+‱䱄䥇䍎啌䕄∠ぜ㄰䇽ぜ㄰ぜ㄰硜愱峽䙸≆
+```
+
+One possible explanation is that this is somehow triggering a heuristic which is then causing the input to be interpreted as some other code page, but the total loss of the `1 DLGINCLUDE` makes that seem unlikely (since most code pages I'm aware of should still contain the ASCII range). It seems more likely that this is triggering some undefined behavior in the preprocessor, and the Chinese characters are incidental.
+
+The most minimal reproduction I've found is:
+
+```rc
+1 DLGINCLUDE "â"""
+```
+
+which outputs:
+
+```c
+#line 1 "C:\\Users\\Ryan\\Programming\\Zig\\resinator\\tmp\\RCa21256"
+#line 1 "test.rc"
+#line 1 "test.rc"
+‱䱄䥇䍎啌䕄∠⋢∢
+```
+
+Some commonalities between all the reproductions of this bug I've found so far:
+- The byte count of the `.rc` file is even, no reproduction has had a filesize with an odd byte count.
+- The number of distinct sequences (a byte, an escaped integer, or an escaped quote) in the filename string has to be small (min: 2, max: 18)
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">utterly baffling</span>
+
+### Certain `DLGINCLUDE` filenames trigger `missing '=' in EXSTYLE=<flags>` errors
+
+```rc
+1 DLGINCLUDE "\06f\x2\x2b\445q\105[ð\134\x90 ...truncated..."
+```
+
+TODO
+
+</div>
 
 <div class="bug-quirk-box">
 <span class="bug-quirk-category">undocumented</span>
@@ -4735,194 +4281,717 @@ For all of the undocumented things detailed in this section, `resinator` attempt
 </div>
 
 <div class="bug-quirk-box">
-<span class="bug-quirk-category">parser bug/quirk</span>
+<span class="bug-quirk-category">parser bug/quirk, miscompilation</span>
 
-### General comma-related inconsistencies
+### Non-ASCII accelerator characters
 
-The rules around commas within statements can be one of the following depending on the context:
+The [`ACCELERATORS`](https://learn.microsoft.com/en-us/windows/win32/menurc/accelerators-resource) resource can be used to essentially define hotkeys for a program. In the message loop of a Win32 program, the `TranslateAccelerator` function can be used to automatically turn the relevant keystrokes into `WM_COMMAND` messages with the associated `idvalue` as the parameter (meaning it can be handled like any other message coming from a menu, button, etc).
 
-- Exactly one comma
-- Zero or one comma
-- Zero or any number of commas
-
-And these rules can be mixed and matched within statements. I've tried to codify my understanding of the rules around commas in a [test `.rc` file I wrote](https://github.com/squeek502/resinator/blob/9a6e50b0c0859e0dee5fd1871d93329e0e1194ef/test/data/reference.rc). Here's an example statement that contains all 3 rules:
+Simplified example from [Using Keyboard Accelerators](https://learn.microsoft.com/en-us/windows/win32/menurc/using-keyboard-accelerators):
 
 ```rc
-AUTO3STATE,, "mytext",, 900,, 1/*,*/ 2/*,*/ 3/*,*/ 4, 3 | NOT 1L, NOT 1 | 3L
+1 ACCELERATORS {
+  "B", 300, CONTROL, VIRTKEY
+}
 ```
-<p style="margin:0; text-align: center;"><i class="caption"><code>,,</code> indicates "zero or any number of commas", <code><span class="token_comment">/*,*/</span></code> indicates "zero or one comma", and <code>,</code> indicates "exactly 1 comma"</i></p>
 
-#### Empty parameters
+This associates the key combination `Ctrl + B` with the ID `300` which can then be handled in Win32 message loop processing code like this:
 
-In most places where parameters cannot have any number of commas separating them, `,,` will lead to a compile error. For example:
+```c
+// ...
+        case WM_COMMAND: 
+            switch (LOWORD(wParam)) 
+            {
+                case 300:
+// ...
+```
+
+There are also a number of ways to specify the keys for an accelerator, but the relevant form here is specifying "control characters" using a string literal with a `^` character, e.g. `"^B"`.
+
+<p><aside class="note">
+
+Note: There *is* a difference between how `"^B", 300` and `"B", 300, CONTROL, VIRTKEY` are compiled, but in practical terms they seem roughly equivalent (both are triggered by `Ctrl + B` on my keyboard). I'm not familiar enough with the accelerator Win32 APIs to know how exactly they differ or when one should be used over the other.
+
+</aside></p>
+
+When specifying a control character using `^` with an ASCII character that is outside of the range of `A-Z` (case insensitive), the Windows RC compiler will give the following error:
 
 <div class="short-rc-and-result">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
 ```rc style="display: flex; flex-direction: column; justify-content: center; flex-grow: 1; margin-top: 0;"
 1 ACCELERATORS {
-  "^b",, 1
+  "^!", 300
 }
 ```
 
 </div>
 <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"
-test.rc(2) : error RC2107 : expected numeric command value
+```none style="display: flex; flex-direction: column; flex-grow: 1; justify-content: center; margin-top: 0;"
+test.rc(2) : error RC2154 : control character out of range [^A - ^Z]
 ```
 
 </div>
 </div>
 
-However, there are a few places where empty parameters are accepted, and therefore `,,` is not a compile error, e.g. in the `MENUITEM` of a `MENUEX` resource:
+However, contrary to what the error implies, many (but not all) non-ASCII characters outside the `A-Z` range are actually accepted. For example, this is *not* an error (when the file is encoded as UTF-8):
 
 ```rc
-1 MENUEX {
-  // The three statements below are equivalent
-  MENUITEM "foo", 0, 0, 0,
-  MENUITEM "foo", /*id*/, /*type*/, /*state*/,
-  MENUITEM "foo",,,,
-  // The parameters are optional, so this is also equivalent
-  MENUITEM "foo"
+#pragma code_page(65001)
+1 ACCELERATORS {
+  "^Ξ", 300
 }
 ```
-
-Adding one more comma will cause a compile error:
-
-<div class="short-rc-and-result">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```rc style="display: flex; flex-direction: column; justify-content: center; flex-grow: 1; margin-top: 0;"
-1 MENUEX {
-  MENUITEM "foo",,,,,
-}
-```
-
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"
-test.rc(2) : error RC2235 : too many arguments supplied
-```
-
-</div>
-</div>
-
-#### Italic is singled out
-
-`DIALOGEX` resources can specify a font to use using a `FONT` optional statement like so:
-
-```rc
-1 DIALOGEX 1, 2, 3, 4
-  FONT 16, "Foo"
-{
-  // ...
-}
-```
-
-The full syntax of the `FONT` statement in this context is:
-
-<pre class="annotated-code"><code class="language-rc" style="white-space: inherit;"><span class="token_keyword">FONT</span> <span class="annotation"><span class="desc">pointsize<i></i></span><span class="subject"><span class="token_identifier">16</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">typeface<i></i></span><span class="subject"><span class="token_string">"Foo"</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">weight<i></i></span><span class="subject"><span class="token_identifier">1</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">italic<i></i></span><span class="subject"><span class="token_identifier">2</span></span></span><span class="token_punctuation">,</span> <span class="annotation"><span class="desc">charset<i></i></span><span class="subject"><span class="token_identifier">3</span></span></span></code></pre>
-<p style="margin:0; text-align: center;"><i class="caption"><code>weight</code>, <code>italic</code>, and <code>charset</code> are optional</i></p>
-
-For whatever reason, while `weight` and `charset` can be empty parameters, `italic` seemingly cannot, since this fails:
-
-<div class="short-rc-and-result">
-<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```rc style="display: flex; flex-direction: column; justify-content: center; flex-grow: 1; margin-top: 0;"
-1 DIALOGEX 1, 2, 3, 4
-  FONT 16, "Foo", /*weight*/, /*italic*/, /*charset*/
-{
-  // ...
-}
-```
-
-</div>
-<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"
-test.rc(2) : error RC2112 : BEGIN expected in dialog
-
-test.rc(6) : error RC2135 : file not found: }
-```
-
-</div>
-</div>
-
-but this succeeds:
-
-```rc
-1 DIALOGEX 1, 2, 3, 4
-  FONT 16, "Foo", /*weight*/, 0, /*charset*/
-{
-  // ...
-}
-```
-
-Due to the strangeness of the error, I'm assuming that this `italic`-parameter-specific-behavior is unintended.
-
-#### Further weirdness
 
 <p><aside class="note">
-  
-Note: This is not really comma-related, this is just a tangentially-related side note
+
+My guess is that the allowed codepoints outside the `A-Z` range are due to an inadvertent use of the `iswalpha` function or similar (see [here](https://gist.github.com/squeek502/2e9d0a4728a83eed074ad9785a209fd0) for a list of every non-ASCII codepoint that triggers the `control character out of range` error in the Windows RC compiler).
 
 </aside></p>
 
-Continuing on with the `FONT` statement of `DIALOGEX` resource: as we saw in ["*If you're not last, you're irrelevant*"](#if-you-re-not-last-you-re-irrelevant), if there are duplicate statements of the same type, all but the last one is ignored:
+When evaluating these `^` strings, the final 'control character' value is determined by subtracting `0x40` from the ASCII uppercased value of the character following the `^`, so in the case of `^b` that would look like:
 
-```rc
-1 DIALOGEX 1, 2, 3, 4
-  FONT 16, "Foo", 1, 2, 3 // Ignored
-  FONT 32, "Bar", 4, 5, 6
-{
-  // ...
-}
+<div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(3, 1fr);">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+b (0x62)
 ```
 
-In the above example, the values-as-compiled will all come from this `FONT` statement:
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```rc
-  FONT 32, "Bar", 4, 5, 6
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+B (0x42)
 ```
 
-However, given that the `weight`, `italic`, and `charset` parameters are optional, if you don't specify them, then their values from the previous `FONT` statement(s) *do* actually carry over, with the exception of the `charset` parameter:
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
 
-```rc
-1 DIALOGEX 1, 2, 3, 4
-  FONT 16, "Foo", 1, 2, 3
-  FONT 32, "Bar"
-{
-  // ...
-}
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+0x42 - 0x40 = 0x02
 ```
 
-With the above, the `FONT` statement that ends up being compiled will effectively be:
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">character (hex value)</i></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">uppercased (hex value)</i></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">control character value</i></div>
+</div>
 
-```rc
-  FONT 32, "Bar", 1, 2, 1
+The same process is used for any allowed codepoints outside the `A-Z` range, but the uppercasing is only done for ASCII values, so in the example above with `Ξ` (the codepoint `U+039E`; Greek Capital Letter Xi), the value is calculated like this:
+
+<div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(2, 1fr);">
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+Ξ (0x039E)
 ```
 
-where the last `1` is the `charset` parameter's default value (`DEFAULT_CHARSET`) rather than the `3` we might expect from the duplicate `FONT` statement.
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```c style="display: flex; flex-grow: 1; justify-content: center; align-items: center; margin: 0;"
+0x039E - 0x40 = 0x035E
+```
+
+</div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">codepoint (hex value)</i></div>
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;"><i class="caption">control character value</i></div>
+</div>
+
+I believe this is a bogus value, since the final value of a control character is meant to be in the range of `0x01` (`^A`) through `0x1A` (`^Z`), which are treated specially. My assumption is that a value of `0x035E` would just be treated as the Unicode codepoint `U+035E` (Combining Double Macron), but I'm unsure exactly how I would go about testing this assumption since all aspects of the interaction between accelerators and non-ASCII key values are still fully opaque to me.
 
 #### `resinator`'s behavior
 
-`resinator` matches the Windows RC compiler behavior, but has better error messages/additonal warnings where appropriate:
+In `resinator`, control characters specified as a quoted string with a `^` in an `ACCELERATORS` resource (e.g. `"^C"`) must be in the range of `A-Z` (case insensitive).
 
 ```resinatorerror
-test.rc:2:21: error: expected number or number expression; got ','
-  FONT 16, "Foo", , ,
-                    ^
-test.rc:2:21: note: this line originated from line 2 of file 'test.rc'
-  FONT 16, "Foo", /*weight*/, /*italic*/, /*charset*/
+test.rc:3:3: error: invalid accelerator key '"^Ξ"': ControlCharacterOutOfRange
+  "^Ξ", 1
+  ^~~~~
 ```
 
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">fundamental concept</span>
+
+### The entirely undocumented concept of the 'output' code page
+
+As mentioned in [*The Windows RC compiler 'speaks' UTF-16*](#the-windows-rc-compiler-speaks-utf-16), there are `#pragma code_page` preprocessor directives that can modify how each line of the input `.rc` file is interpreted. Additionally, the default code page for a file can also be set via the CLI `/c` option, e.g. `/c65001` to set the default code page to UTF-8.
+
+What was not mentioned, however, is that the code page affects both how the input is interpreted *and* how the output is encoded. Take the following example:
+
+```rc
+1 RCDATA { "Ó" }
+```
+
+<p><aside class="note">
+
+Note: `Ó` is encoded in [Windows-1252](https://en.wikipedia.org/wiki/Windows-1252) as the byte `0xD3`
+
+</aside></p>
+
+When saved as Windows-1252 (the default code page for the Windows RC compiler), the `0xD3` byte in the string will be interpreted as `Ó` and written to the `.res` as its Windows-1252 representation (`0xD3`).
+
+If the same Windows-1252-encoded file is compiled with the default code page set to UTF-8 (`rc.exe /c65001`), then the `0xD3` byte in the `.rc` file will be an invalid UTF-8 byte sequence and get replaced with � during preprocessing, and because the code page is UTF-8, the *output* in the `.res` file will also be encoded as UTF-8, so the bytes `0xEF 0xBF 0xBD` (the UTF-8 sequence for �) will be written.
+
+This is all pretty reasonable, but things start to get truly bizarre when you add `#pragma code_page` into the mix:
+
+```rc
+#pragma code_page(1252)
+1 RCDATA { "Ó" }
+```
+
+When saved as Windows-1252 and compiled with Windows-1252 as the default code page, this will work the same as described above. However, if we compile the same Windows-1252-encoded `.rc` file with the default code page set to UTF-8 (`rc.exe /c65001`), we see something rather strange:
+
+- The input `0xD3` byte is interpreted as `Ó`, as expected since the `#pragma code_page` changed the code page to 1252
+- The output in the `.res` is `0xC3 0x93`, the UTF-8 sequence for `Ó` (instead of the expected `0xD3` which is the Windows-1252 encoding of `Ó`)
+
+That is, the `#pragma code_page` changed the *input* code page, but there is a distinct *output* code page that can be out-of-sync with the input code page. In this instance, the input code page for the `1 RCDATA ...` line is Windows-1252, but the output code page is still the default set from the CLI option (in this case, UTF-8).
+
+Even more bizarre, this disjointedness can only occur via the first `#pragma code_page` directive of the file:
+
+```rc
+#pragma code_page(65001) // which code page this is doesn't matter, it can be anything valid
+#pragma code_page(1252)
+1 RCDATA { "Ó" }
+```
+
+With this, still saved as Windows-1252, the code page from the CLI option no longer matters&mdash;even when compiled with `/c65001`, the `0xD3` in the file is both interpreted as Windows-1252 (`Ó`) *and* outputted as Windows-1252 (`0xD3`).
+
+In other words, this is how things seem to work:
+
+- The CLI `/c` option sets both the input and output code pages
+- The first `#pragma code_page` in the file *only* sets the input code page, and does not modify the output code page
+- Any other `#pragma code_page` directives set *both* the input and output code pages
+
+This behavior is baffling and I've not seen it mentioned anywhere on the internet at any point in time. Even the concept of the code page affecting the encoding of the output is fully undocumented as far as I can tell.
+
+<p><aside class="note">
+
+Note: This behavior does not generally impact wide string literals, e.g. `L"Ó"` is affected by the input code page, but is written to the `.res` file as its UTF-16 LE representation so the output code page is not relevant.
+
+</aside></p>
+
+</div>
+
+<div class="bug-quirk-box">
+<span class="bug-quirk-category">utterly baffling, miscompilation</span>
+
+### Codepoint misbehavior/miscompilation
+
+There are a few different ASCII control characters/Unicode codepoints that cause strange behavior in the Windows RC compiler if they are put certain places in a `.rc` file. Each case is sufficiently different that they might warrant their own section, but I'm just going to lump them together into one section here.
+
+#### U+0000 Null
+
+The Windows RC compiler behaves very strangely when embedded `NUL` (`<0x00>`) characters are in a `.rc` file. Some examples with regards to string literals:
+
+<div class="short-rc-and-result">
+
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;">1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span> <span class="token_string">"a</span><span class="token_unrepresentable" title="'NUL' control character">&lt;0x00&gt;</span><span class="token_string">"</span> <span class="token_punctuation">}</span></code></pre>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>will error with <code>unexpected end of file in string literal</code></div></div></div>
+
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;">1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span> <span class="token_string">"</span><span class="token_unrepresentable" title="'NUL' control character">&lt;0x00&gt;</span><span class="token_string">"</span> <span class="token_punctuation">}</span></code></pre>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>"succeeds" but results in an empty <code>.res</code> file (no <code>RCDATA</code> resource)</div></div></div>
+
+</div>
+
+Even stranger is that the character count of the file seems to matter in some fashion for these examples. The first example has an odd character count, so it errors, but add one more character (or any odd number of characters; doesn't matter what/where they are, can even be whitespace) and it will not error. The second example has an even character count, so adding another character (again, anywhere) would induce the `unexpected end of file in string literal` error.
+
+#### U+0004 End of Transmission
+
+The Windows RC compiler seemingly treats 'End of Transmission' (`<0x04>`) characters outside of string literals as a 'skip the next character' instruction when parsing. This means that:
+
+<div class="gets-parsed-as">
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
+  <pre><code class="language-rc" style="white-space: inherit;">1 RCDATA<span class="token_unrepresentable" title="'End of Transmission' control character">&lt;0x04&gt;</span>! <span class="token_punctuation">{</span> <span class="token_string">"foo"</span> <span class="token_punctuation">}</span></code></pre>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center; align-items: center; text-align:center;">gets treated as if it were:</div>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
+
+```rc
+1 RCDATA { "foo" }
+```
+
+</div>
+</div>
+</div>
+
+while
+
+<div class="gets-parsed-as">
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
+  <pre><code class="language-rc" style="white-space: inherit;">1 RCDATA<span class="token_unrepresentable" title="'End of Transmission' control character">&lt;0x04&gt;</span>!?! <span class="token_punctuation">{</span> <span class="token_string">"foo"</span> <span class="token_punctuation">}</span></code></pre>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center; align-items: center;">gets treated as if it were:</div>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0;">
+  <pre><code class="language-rc" style="white-space: inherit;">1 RCDATA?! <span class="token_punctuation">{</span> <span class="token_string">"foo"</span> <span class="token_punctuation">}</span></code></pre>
+</div>
+</div>
+</div>
+
+#### U+007F Delete
+
+The Windows RC compiler seemingly treats 'Delete' (`<0x7F>`) characters as a terminator in some capacity. A few examples:
+
+<div class="short-rc-and-result">
+
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;">1 RC<span class="token_unrepresentable" title="'Delete' control character">&lt;0x7F&gt;</span>DATA <span class="token_punctuation">{</span><span class="token_punctuation">}</span></code></pre>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>gets parsed as <code>1 RC DATA {}</code>, leading to the compile error <code>file not found: DATA</code></div></div></div>
+
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;"><span class="token_unrepresentable" title="'Delete' control character">&lt;0x7F&gt;</span>1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span><span class="token_punctuation">}</span></code></pre>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>"succeeds" but results in an empty <code>.res</code> file (no <code>RCDATA</code> resource)</div></div></div>
+
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;">1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span> <span class="token_string">"</span><span class="token_unrepresentable" title="'Delete' control character">&lt;0x7F&gt;</span><span class="token_string">"</span> <span class="token_punctuation">}</span></code></pre>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>fails with <code>unexpected end of file in string literal</code></div></div></div>
+
+</div>
+
+#### U+001A Substitute
+
+The Windows RC compiler treats 'Substitute' (`<0x1A>`) characters as an 'end of file' marker:
+
+<div class="short-rc-and-result">
+
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;">1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span><span class="token_punctuation">}</span>
+<span class="token_unrepresentable" title="'Substitute' control character">&lt;0x1A&gt;</span>
+2 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span><span class="token_punctuation">}</span></code></pre>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Only the <code>1 RCDATA {}</code> resource makes it into the <code>.res</code>, everything after the <code>&lt;0x1A&gt;</code> is ignored</div></div></div>
+
+</div>
+
+but use of the `<0x1A>` character can also lead to a (presumed) infinite loop in certain scenarios, like this one:
+
+<pre><code class="language-rc" style="white-space: inherit;">1 <span class="token_keyword">MENUEX</span> <span class="token_keyword">FIXED</span><span class="token_unrepresentable" title="'Substitute' control character">&lt;0x1A&gt;</span><span class="token_keyword">VERSION</span></code></pre>
+
+<p><aside class="note">
+
+Note: C preprocessors also typically treat `<0x1A>` as EOF when they are outside of string literals.
+
+</aside></p>
+
+#### U+0900, U+0A00, U+0A0D, U+0D00, U+2000
+
+The Windows RC compiler will error and/or ignore these codepoints when used outside of string literals, but not always. When used within string literals, the Windows RC compiler will miscompile them in some very bizarre ways.
+
+<p><aside class="note">
+
+Note: In the following example, the string contains the codepoints in this order:
+
+<pre><code class="language-rc"><span class="token_string">"</span><span class="token_unrepresentable" title="Devanagari Sign Inverted Candrabindu">&lt;U+0900&gt;</span><span class="token_unrepresentable" title="<reserved>">&lt;U+0A00&gt;</span><span class="token_unrepresentable" title="<reserved>">&lt;U+0A0D&gt;</span><span class="token_unrepresentable" title="Malayalam Sign Combining Anusvara Above">&lt;U+0D00&gt;</span><span class="token_unrepresentable" title="En Quad">&lt;U+2000&gt;</span><span class="token_string">"</span></code></pre>
+
+</aside></p>
+
+<div class="short-rc-and-result">
+  
+  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"
+1 RCDATA { "ऀ਀਍ഀ " }
+```
+
+  </div>
+
+  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+    <div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Encoded as UTF-8 and compiled with <code>rc /c65001 test.rc</code>, meaning both the input and output code pages are UTF-8 (see <a href="#the-entirely-undocumented-concept-of-the-output-code-page">"<i>The entirely undocumented concept of the 'output' code page</i>"</a>)</div></div>
+  </div>
+
+</div>
+
+The expected result is the resource's data to contain the UTF-8 encoding of each codepoint, one after another, but that is not at all what we get:
+
+<pre><code class="language-none">Expected bytes: <span class="token_unrepresentable" title="UTF-8 encoding of U+0900">E0 A4 80</span> <span class="token_unrepresentable" title="UTF-8 encoding of U+0A00">E0 A8 80</span> <span class="token_unrepresentable" title="UTF-8 encoding of U+0A0D">E0 A8 8D</span> <span class="token_unrepresentable" title="UTF-8 encoding of U+0D00">E0 B4 80</span> <span class="token_unrepresentable" title="UTF-8 encoding of U+2000">E2 80 80</span>
+
+  Actual bytes: <span class="token_unrepresentable" title="Horizontal Tab (\t)">09</span> <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="New Line (\n)">0A</span> <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="New Line (\n)">0A</span> <span class="token_unrepresentable" title="Space">20</span></code></pre>
+
+These are effectively the transformations that are being made in this case:
+
+<pre><code class="language-rc"><span class="token_unrepresentable" title="Devanagari Sign Inverted Candrabindu">&lt;U+0900&gt;</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Horizontal Tab (\t)">09</span>
+<span class="token_unrepresentable" title="<reserved>">&lt;U+0A00&gt;</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="New Line (\n)">0A</span>
+<span class="token_unrepresentable" title="<reserved>">&lt;U+0A0D&gt;</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="New Line (\n)">0A</span>
+<span class="token_unrepresentable" title="Malayalam Sign Combining Anusvara Above">&lt;U+0D00&gt;</span>  <span class="token_function">────►</span>  &lt;omitted entirely&gt;
+<span class="token_unrepresentable" title="En Quad">&lt;U+2000&gt;</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Space">20</span></code></pre>
+
+It turns out that all the codepoints have been turned into some combination of whitespace characters: `<0x09>` is `\t`, `<0x20>` is `<space>`, and `<0x0A>` is `\n`. My guess as to what's going on here is that there's some whitespace detection code going seriously haywire, in combination with some sort of endianness heuristic. If we run the example through the preprocessor only (`rc.exe /p /c65001 test.rc`), we can see that things have already gone wrong (note: I've emphasized some whitespace characters):
+
+<pre><code class="language-rc"><span class="token_preprocessor">#line</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_identifier">1</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_string">"test.rc"</span><span class="token_rc_whitespace token_whitespace">
+</span><span class="token_identifier">1</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_keyword">RCDATA</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_punctuation">{</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_string">"</span><span class="token_unrepresentable" title="Horizontal Tab (\t)">────</span>
+
+<span class="token_unrepresentable" title="Space">·</span><span class="token_string">"</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_punctuation">}</span><span class="token_rc_whitespace token_whitespace">
+</span></code></pre>
+
+There's quite few bugs/quirks interacting here, so I'll do my best to explain.
+
+As detailed in ["*The Windows RC compiler 'speaks' UTF-16*"](#the-windows-rc-compiler-speaks-utf-16), the preprocessor always outputs UTF-16, which means that the preprocessor will interpret the bytes of the file using the current code page and then write them back out as UTF-16. So, with that in mind, let's think about `U+0900`, which erroneously gets transformed to the character `<0x09>` (`\t`):
+
+- In the `.rc` file, `U+0900` is encoded as UTF-8, meaning the bytes in the file are `E0 A4 80`
+- The preprocessor will decode those bytes into the codepoint `0x0900` (since we set the code page to UTF-8)
+
+While [integer endianness](https://en.wikipedia.org/wiki/Endianness) is irrelevant for UTF-8, it *is* relevant for UTF-16, since a code unit (`u16`) is 2 bytes wide. It seems possible that, because the Windows RC compiler is so UTF-16-centric, it has some heuristic to infer the endianness of a file, and that heuristic is being triggered for certain whitespace characters. That is, it might be that the Windows RC compiler sees the decoded `0x0900` codepoint and thinks it might be a byteswapped `0x0009`, and therefore *treats it as* `0x0009` (which is a tab character).
+
+This sort of thing would explain some of the changes we see to the preprocessed file:
+
+- `U+0900` could be confused for a byteswapped `<0x09>` (`\t`)
+- `U+0A00` could be confused for a byteswapped `<0x0A>` (`\n`)
+- `U+2000` could be confused for a byteswapped `<0x20>` (`<space>`)
+
+For `U+0A0D` and `U+0D00`, we need another piece of information: carriage returns (`<0x0D>`, `\r`) are completely ignored by the preprocessor (i.e. <code>RC<span class="token_unrepresentable" title="Carriage Return (\r)">&lt;0x0D&gt;</span>DATA</code> gets interpreted as `RCDATA`). With this in mind:
+
+- `U+0A0D`, ignoring the `0D` part, could be confused for a byteswapped `<0x0A>` (`\n`)
+- `U+0D00` could be confused for a byteswapped `<0x0D>` (`\r`), and therefore is ignored
+
+<p><aside class="note">
+
+Note: If this theory is true, then this endianness heuristic is being invoked in an inappropriate step along the preprocessing path, since it's acting on the *decoded codepoint* which no longer has any relationship to the encoding of the file. In other words, the UTF-8 encoding cannot be confused for these whitespace characters&mdash;only the decoded codepoint can be, but the decoded codepoint is an integer with native endianness so there's no longer any reason for an endianness heuristic.
+
+</aside></p>
+
+Now that we have a theory about what might be going wrong in the preprocessor, we can examine the preprocessed version of the example:
+
+<pre><code class="language-rc"><span class="token_preprocessor">#line</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_identifier">1</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_string">"test.rc"</span><span class="token_rc_whitespace token_whitespace">
+</span><span class="token_identifier">1</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_keyword">RCDATA</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_punctuation">{</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_string">"<span class="token_unrepresentable" title="Horizontal Tab (\t)">────</span>
+
+<span class="token_unrepresentable" title="Space">·</span>"</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_punctuation">}</span><span class="token_rc_whitespace token_whitespace">
+</span></code></pre>
+
+From ["*Multiline strings don't behave as expected/documented*"](#multiline-strings-don-t-behave-as-expected-documented), we know that this string literal&mdash;contrary to the documentation&mdash;is an accepted multiline string literal, and we also know that whitespace in these undocumented string literals is typically collapsed, so the two newlines and the trailing space should become one <code><span class="token_unrepresentable" title="Space">20</span></code> <code><span class="token_unrepresentable" title="New Line (\n)">0A</span></code> sequence. In fact, if we take the output of the preprocessor and copy it into a new file and compile *that*, we get a completely different result that's more in line with what we expect:
+
+<div class="short-rc-and-result">
+  
+  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```rc style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"
+1 RCDATA { "  
+
+ " }
+```
+
+  </div>
+
+  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+<pre style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><code class="language-none">Compiled data: <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="New Line (\n)">0A</span></code></pre>
+  </div>
+
+</div>
+
+As detailed in ["*The column of a tab character matters*"](#the-column-of-a-tab-character-matters), an embedded tab character gets converted to a variable number of spaces depending on which column it's at in the file. It just so happens that it gets converted to 4 spaces in this case, and the remaining <code><span class="token_unrepresentable" title="Space">20</span></code> <code><span class="token_unrepresentable" title="New Line (\n)">0A</span></code> is the collapsed whitespace following the tab character.
+
+However, what we actually see when compiling the `1 RCDATA { "ऀ਀਍ഀ " }` example is:
+
+<pre><code class="language-none"><span class="token_unrepresentable" title="Horizontal Tab (\t)">09</span> <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="New Line (\n)">0A</span> <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="New Line (\n)">0A</span> <span class="token_unrepresentable" title="Space">20</span></code></pre>
+
+where these transformations are occurring:
+
+<pre><code class="language-rc"><span class="token_unrepresentable" title="Devanagari Sign Inverted Candrabindu">&lt;U+0900&gt;</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Horizontal Tab (\t)">09</span>
+<span class="token_unrepresentable" title="<reserved>">&lt;U+0A00&gt;</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="New Line (\n)">0A</span>
+<span class="token_unrepresentable" title="<reserved>">&lt;U+0A0D&gt;</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Space">20</span> <span class="token_unrepresentable" title="New Line (\n)">0A</span>
+<span class="token_unrepresentable" title="Malayalam Sign Combining Anusvara Above">&lt;U+0D00&gt;</span>  <span class="token_function">────►</span>  &lt;omitted entirely&gt;
+<span class="token_unrepresentable" title="En Quad">&lt;U+2000&gt;</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Space">20</span></code></pre>
+
+So it seems that something about when this bug/quirk takes place in the compiler pipeline affects how the preprocessor/compiler treats the input/output.
+
+- Normally, an embedded tab character will get converted to spaces during compilation, but even though the Windows RC compiler seems to *think* `<U+0900>` is an embedded tab character, it gets compiled into `<0x09>` rather than converted to space characters.
+- Normally, an undocumented-but-accepted multiline string literal has its whitespace collapsed, but even though the Windows RC compiler seems to *think* `<U+0A00>` and `<U+0A0D>` are new lines and `<U+2000>` is a space, it doesn't collapse them.
+
+So, to summarize, these codepoints likely confuse the Windows RC compiler into thinking they are whitespace, and the compiler treats them as the whitespace character in some ways, but introduces novel behavior for those characters in other ways. In any case, this is a miscompilation, because these codepoints have no *real* relationship to the whitespace characters the Windows RC compiler mistakes them for.
+
+#### U+FEFF Byte Order Mark
+
+For the most part, the Windows RC compiler skips over `<U+FEFF>` ([byte-order mark or BOM](https://codepoints.net/U+FEFF)) everywhere, even within string literals, within names, etc. (e.g. `RC<U+FEFF>DATA` will compile as if it were `RCDATA`). However, there are edge cases where a BOM will cause cryptic and unexplained errors, like this:
+
+<div class="short-rc-and-result">
+
+<div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;"><span class="token_preprocessor">#pragma</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_identifier">code_page</span><span class="token_punctuation">(</span><span class="token_identifier">65001</span><span class="token_punctuation">)</span>
+1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span> 1<span class="token_unrepresentable" title="'Byte-Order Mark' Unicode codepoint">&lt;U+FEFF&gt;</span>1 <span class="token_punctuation">}</span></code></pre>
+</div>
+<div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+
+```none style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"
+test.rc(2) : fatal error RC1011: compiler limit : '1 }
+': macro definition too big
+```
+
+</div>
+
+</div>
+
+#### U+E000 Private Use Character
+
+This behaves similarly to the byte-order mark (it gets skipped/ignored wherever it is), although `<U+E000>` seems to avoid causing errors like the BOM does.
+
+#### U+FFFE, U+FFFF Noncharacter
+
+The behavior of these codepoints on their own is strange, but it's not the most interesting part about them, so it's up to you if you want to expand this:
+
+<details class="box-border" style="padding: 1em; padding-bottom: 0;">
+<summary style="margin-bottom: 1em;">Behavior of U+FFFE and U+FFFF on their own</summary>
+
+<div class="box-border" style="padding: 1em; padding-bottom: 0; margin-bottom: 1em;">
+
+<div class="short-rc-and-result">
+  
+  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;">1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span> <span class="token_string">"</span><span class="token_unrepresentable" title="'Noncharacter' Unicode codepoint">&lt;U+FFFE&gt;</span><span class="token_string">"</span> <span class="token_punctuation">}</span></code></pre>
+  </div>
+
+  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+    <div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Encoded as UTF-8 and compiled with <code>rc /c65001 test.rc</code>, meaning both the input and output code pages are UTF-8 (see <a href="#the-entirely-undocumented-concept-of-the-output-code-page">"<i>The entirely undocumented concept of the 'output' code page</i>"</a>)</div></div>
+  </div>
+
+</div>
+
+<pre><code class="language-none">Expected bytes: <span class="token_unrepresentable" title="UTF-8 encoding of U+FFFE">EF BF BE</span>
+
+  Actual bytes: <span class="token_unrepresentable" title="UTF-8 encoding of U+FFFD Replacement Character (�)">EF BF BD</span> <span class="token_unrepresentable" title="UTF-8 encoding of U+FFFD Replacement Character (�)">EF BF BD</span> (UTF-8 encoding of �, twice)</code></pre>
+
+`U+FFFF` behaves the same way.
+
+</div>
+
+<div class="box-border" style="padding: 1em; padding-bottom: 0; margin-bottom: 1em;">
+
+<div class="short-rc-and-result">
+  
+  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;">1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span> <span class="token_string">L"</span><span class="token_unrepresentable" title="'Noncharacter' Unicode codepoint">&lt;U+FFFE&gt;</span><span class="token_string">"</span> <span class="token_punctuation">}</span></code></pre>
+  </div>
+
+  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+    <div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Encoded as UTF-8 and compiled with <code>rc /c65001 test.rc</code>, meaning both the input and output code pages are UTF-8 (see <a href="#the-entirely-undocumented-concept-of-the-output-code-page">"<i>The entirely undocumented concept of the 'output' code page</i>"</a>)</div></div>
+  </div>
+
+</div>
+
+<pre><code class="language-none">Expected bytes: <span class="token_unrepresentable" title="UTF-16 LE encoding of U+FFFE">FE FF</span>
+
+  Actual bytes: <span class="token_unrepresentable" title="UTF-16 LE encoding of U+FFFD Replacement Character (�)">FD FF</span> <span class="token_unrepresentable" title="UTF-16 LE encoding of U+FFFD Replacement Character (�)">FD FF</span> (UTF-16 LE encoding of �, twice)</code></pre>
+
+`U+FFFF` behaves the same way.
+
+</div>
+
+<div class="box-border" style="padding: 1em; padding-bottom: 0; margin-bottom: 1em;">
+
+<div class="short-rc-and-result">
+  
+  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;"><span class="token_preprocessor">#pragma</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_identifier">code_page</span><span class="token_punctuation">(</span><span class="token_identifier">65001</span><span class="token_punctuation">)</span>
+1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span> <span class="token_string">"</span><span class="token_unrepresentable" title="'Noncharacter' Unicode codepoint">&lt;U+FFFE&gt;</span><span class="token_string">"</span> <span class="token_punctuation">}</span></code></pre>
+  </div>
+
+  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+    <div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Encoded as UTF-8 and compiled with <code>rc test.rc</code>, meaning the input code page is UTF-8, but the output code page is Windows-1252 (see <a href="#the-entirely-undocumented-concept-of-the-output-code-page">"<i>The entirely undocumented concept of the 'output' code page</i>"</a>)</div></div>
+  </div>
+
+</div>
+
+<pre><code class="language-none">Expected bytes: <span class="token_unrepresentable" title="Windows-1252 encoding of '?'">3F</span>
+
+  Actual bytes: <span class="token_unrepresentable" title="Windows-1252 encoding of Latin Small Letter Y with Diaeresis (ÿ)">FE</span> <span class="token_unrepresentable" title="Windows-1252 encoding of Latin Small Letter Thorn (þ)">FF</span></code></pre>
+
+`U+FFFF` behaves the same way, but would get compiled to `FF FF`.
+
+</div>
+
+<div class="box-border" style="padding: 1em; padding-bottom: 0; margin-bottom: 1em;">
+
+<div class="short-rc-and-result">
+  
+  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;"><span class="token_preprocessor">#pragma</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_identifier">code_page</span><span class="token_punctuation">(</span><span class="token_identifier">65001</span><span class="token_punctuation">)</span>
+1 <span class="token_keyword">RCDATA</span> <span class="token_punctuation">{</span> <span class="token_string">L"</span><span class="token_unrepresentable" title="'Noncharacter' Unicode codepoint">&lt;U+FFFE&gt;</span><span class="token_string">"</span> <span class="token_punctuation">}</span></code></pre>
+  </div>
+
+  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+    <div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Encoded as UTF-8 and compiled with <code>rc test.rc</code>, meaning the input code page is UTF-8, but the output code page is Windows-1252 (see <a href="#the-entirely-undocumented-concept-of-the-output-code-page">"<i>The entirely undocumented concept of the 'output' code page</i>"</a>)</div></div>
+  </div>
+
+</div>
+
+<pre><code class="language-none">Expected bytes: <span class="token_unrepresentable" title="UTF-16 LE encoding of U+FFFE">FE FF</span>
+
+  Actual bytes: <span class="token_unrepresentable" title="UTF-16 LE encoding of U+00FF Latin Small Letter Y with Diaeresis (ÿ)">FE 00</span> <span class="token_unrepresentable" title="UTF-16 LE encoding of U+00FE Latin Small Letter Thorn (þ)">FF 00</span></code></pre>
+
+
+`U+FFFF` behaves the same way, but would get compiled to `FF 00 FF 00`.
+
+</div>
+
+</details>
+
+The *interesting* part about `U+FFFE` and `U+FFFF` is that their presence affects how *every non-ASCII codepoint in the file* is interpreted/compiled. That is, if either one appears anywhere in a file, it affects the interpretation of the entire file. Let's start with this example and try to understand what might be happening with the `䄀` characters in the `RCD䄀T䄀` resource type:
+
+<div class="short-rc-and-result">
+  
+  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+  <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;">1 RCD䄀T䄀 <span class="token_punctuation">{</span> <span class="token_string">"</span><span class="token_unrepresentable" title="'Noncharacter' Unicode codepoint">&lt;U+FFFE&gt;</span><span class="token_string">"</span> <span class="token_punctuation">}</span></code></pre>
+  </div>
+
+  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+    <div style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Encoded as UTF-8 and compiled with <code>rc /c65001 test.rc</code>, meaning both the input and output code pages are UTF-8 (see <a href="#the-entirely-undocumented-concept-of-the-output-code-page">"<i>The entirely undocumented concept of the 'output' code page</i>"</a>)</div></div>
+  </div>
+
+</div>
+
+If we run this through the preprocessor only (`rc /c65001 /p test.rc`), then it ends up as:
+
+```rc
+1 RCDATA { "��" }
+```
+
+The interpretation of the `<U+FFFE>` codepoint itself is the same as described above, but we can also see that the following transformation is occurring for the `䄀` codepoint:
+
+<pre><code class="language-rc"><span class="token_unrepresentable" title="CJK Unified Ideograph-4100">&lt;U+4100&gt;</span> <span class="token_punctuation">(</span>䄀<span class="token_punctuation">)</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Latin Capital Letter A">&lt;U+0041&gt;</span> <span class="token_punctuation">(</span>A<span class="token_punctuation">)</span></code></pre>
+
+And this transformation is not an illusion. If you compile this example `.rc` file, it will get compiled as the predefined `RCDATA` resource type. So, what's going on here?
+
+Let's back up a bit and talk about [UTF-16](https://en.wikipedia.org/wiki/UTF-16) and [endianness](https://en.wikipedia.org/wiki/Endianness). Since UTF-16 uses 2 bytes per code unit, it can be encoded either as little-endian (least-significant byte first) or big-endian (most-significant byte first).
+
+<div class="short-rc-and-result">
+  
+  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+    <div class="box-bg" style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Codepoints:</div></div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-none"><span class="token_unrepresentable" title="Latin Capital Letter A">&lt;U+0041&gt;</span> <span class="token_unrepresentable" title="Meetei Mayek Letter Huk">&lt;U+ABCD&gt;</span> <span class="token_unrepresentable" title="CJK Unified Ideograph-4100">&lt;U+4100&gt;</span></code></pre>
+  </div>
+
+  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+    <div class="box-bg" style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Little-Endian UTF-16:</div></div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-none"><span class="token_unrepresentable" title="Latin Capital Letter A">41 00</span> <span class="token_unrepresentable" title="Meetei Mayek Letter Huk">CD AB</span> <span class="token_unrepresentable" title="CJK Unified Ideograph-4100">00 41</span></code></pre>
+  </div>
+
+  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+    <div class="box-bg" style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Big-Endian UTF-16:</div></div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-none"><span class="token_unrepresentable" title="Latin Capital Letter A">00 41</span> <span class="token_unrepresentable" title="Meetei Mayek Letter Huk">AB CD</span> <span class="token_unrepresentable" title="CJK Unified Ideograph-4100">41 00</span></code></pre>
+  </div>
+
+</div>
+
+In many cases, the endianness of the encoding can be inferred, but in order to make it unambiguous, a [byte-order mark](https://en.wikipedia.org/wiki/Byte_order_mark) (BOM) can be included (usually at the start of a file). The codepoint of the BOM is [`U+FEFF`](https://codepoints.net/U+FEFF), so that's either encoded as `FF FE` for little-endian or `FE FF` for big-endian.
+
+<p><aside class="note">
+
+Note: The Windows RC compiler writes UTF-16 as little-endian, and its preprocessor always outputs UTF-16 (see [*The Windows RC compiler 'speaks' UTF-16*](#the-windows-rc-compiler-speaks-utf-16))
+
+</aside></p>
+
+With this in mind, consider how one might handle a big-endian UTF-16 byte-order mark in a file when starting with the assumption that the file is little-endian.
+
+<div class="short-rc-and-result">
+  
+  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+    <div class="box-bg" style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Big-endian UTF-16 encoded byte-order mark:</div></div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-none"><span class="token_unrepresentable" title="Big-endian UTF-16 encoding of U+FEFF (BOM)">FE FF</span></code></pre>
+  </div>
+
+  <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+    <div class="box-bg" style="display: flex; flex-direction: column; flex-grow: 1; padding: 0.5em; justify-content: center; margin: 0.5em 0; margin-top: 0;"><div>Decoded codepoint, assuming little-endian:</div></div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
+<pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-none"><span class="token_unrepresentable" title="Noncharacter">&lt;U+FFFE&gt;</span></code></pre>
+  </div>
+
+</div>
+
+So, starting with the assumption that a file is little-endian, treating the decoded codepoint `<U+FFFE>` as a trigger for switching to interpreting the file as big-endian can make sense. However, it *only* makes sense when you are working with an encoding where endianness matters (e.g. UTF-16 or UTF-32). It appears, though, that the Windows RC compiler is using this *"`<U+FFFE>`? Oh, the file is big-endian and I should byteswap every codepoint"* heuristic even when it's dealing with UTF-8, which doesn't make any sense&mdash;endianness is irrelevant for UTF-8, since its code units are a single byte.
+
+As mentioned in [`U+0900`, `U+0A00`, etc](#u-0900-u-0a00-u-0a0d-u-0d00-u-2000), this endianness handling is likely happening in the wrong phase of the compiler pipeline; it's acting on already-decoded codepoints rather than affecting how the bytes of the file are decoded.
+
+If I had to guess as to what's going on here, it would be something like:
+
+- The preprocessor decodes all codepoints, and internally assumes little-endian in some fashion
+- If the preprocessor ever encounters the decoded codepoint `<U+FFFE>`, it assumes it must be a byteswapped byte-order mark, indicating that the file is encoded as big-endian, and sets some internal 'big-endian' flag
+- When writing the result after preprocessing, that 'big-endian' flag is used to determine whether or not to byteswap every codepoint in the file before writing it (except ASCII codepoints for some reason)
+
+This would explain the behavior with `䄀` we saw earlier, where this `.rc` file:
+
+<pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc" style="white-space: inherit;">1 RCD䄀T䄀 <span class="token_punctuation">{</span> <span class="token_string">"</span><span class="token_unrepresentable" title="'Noncharacter' Unicode codepoint">&lt;U+FFFE&gt;</span><span class="token_string">"</span> <span class="token_punctuation">}</span></code></pre>
+
+gets preprocessed into:
+
+```rc
+1 RCDATA { "��" }
+```
+
+which means the following (byteswapping) transformation occurred, even to the `䄀` characters preceding the `<U+FFFE>`:
+
+<pre><code class="language-rc"><span class="token_unrepresentable" title="CJK Unified Ideograph-4100">&lt;U+4100&gt;</span> <span class="token_punctuation">(</span>䄀<span class="token_punctuation">)</span>  <span class="token_function">────►</span>  <span class="token_unrepresentable" title="Latin Capital Letter A">&lt;U+0041&gt;</span> <span class="token_punctuation">(</span>A<span class="token_punctuation">)</span></code></pre>
+
+##### Wait, what about `U+FFFF`?
+
+`U+FFFF` works the exact same way as `U+FFFE`&mdash;it, too, causes all non-ACII codepoints in the file to be byteswapped&mdash;and I have no clue as to why that would be since `U+FFFF` has no apparent relationship to a BOM. My only guess is an errant `>= 0xFFFE` check on a `u16` value.
+
+#### `resinator`'s behavior
+
+Any codepoints that cause misbehaviors are either a compile error:
+
 ```resinatorerror
-test.rc:2:3: warning: this statement was ignored; when multiple statements of the same type are specified, only the last takes precedence
-  FONT 16, "Foo", 1, 2, 3
-  ^~~~~~~~~~~~~~~~~~~~~~~
+test.rc:1:9: error: character '\x04' is not allowed outside of string literals
+1 RCDATA�!?! { "foo" }
+        ^
+```
+```resinatorerror
+test.rc:1:1: error: character '\x7F' is not allowed
+�1 RCDATA {}
+^
+```
+
+or the miscompilation is avoided and a warning is emitted:
+
+```resinatorerror
+test.rc:1:12: warning: codepoint U+0900 within a string literal would be miscompiled by the Win32 RC compiler (it would get treated as U+0009)
+1 RCDATA { "ऀ਀਍ഀ " }
+           ^~~~~~~
+```
+```resinatorerror
+test.rc:1:12: warning: codepoint U+FFFF within a string literal would cause the entire file to be miscompiled by the Win32 RC compiler
+1 RCDATA { "￿" }
+           ^~~
+test.rc:1:12: note: the presence of this codepoint causes all non-ASCII codepoints to be byteswapped by the Win32 RC preprocessor
 ```
 
 </div>
