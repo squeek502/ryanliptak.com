@@ -171,8 +171,7 @@ tt{
 code {
   font-size: 87.5%;
 }
-:link > code, :visited > code {
-  text-decoration: underline;
+:link code, :visited code {
   color: inherit;
 }
 
