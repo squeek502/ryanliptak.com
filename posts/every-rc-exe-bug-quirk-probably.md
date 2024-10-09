@@ -4622,7 +4622,7 @@ I used the nebulous term 'thing' because the rules for what stops the disjoint c
 
 - Any whitespace
 - A non-`code_page` pragma directive (e.g. `#pragma foo`)
-- An `#include` that include a file with a `.h` or `.c` extension ([the contents of those files are ignored after the preprocessor](https://learn.microsoft.com/en-us/windows/win32/menurc/preprocessor-directives))
+- An `#include` that includes a file with a `.h` or `.c` extension ([the contents of those files are ignored after preprocessing](https://learn.microsoft.com/en-us/windows/win32/menurc/preprocessor-directives))
 - A `code_page` pragma with an invalid code page, but only if the `/w` CLI option is set which turns invalid code page pragmas into warnings instead of errors
 
 I have a feeling this list is incomplete, though, as I only recently figured out that it's not an inherent bug/quirk of the first `#pragma code_page` in the file. Here's a file containing all of the above elements:
@@ -5275,7 +5275,7 @@ The interpretation of the `<U+FFFE>` codepoint itself is the same as described a
 
 And this transformation is not an illusion. If you compile this example `.rc` file, it will get compiled as the predefined `RCDATA` resource type. So, what's going on here?
 
-Let's back up a bit and talk about [UTF-16](https://en.wikipedia.org/wiki/UTF-16) and [endianness](https://en.wikipedia.org/wiki/Endianness). Since UTF-16 uses 2 bytes per code unit, it can be encoded either as little-endian (least-significant byte first) or big-endian (most-significant byte first).
+Let's back up a bit and talk in a bit more detail about [UTF-16](https://en.wikipedia.org/wiki/UTF-16) and [endianness](https://en.wikipedia.org/wiki/Endianness). Since UTF-16 uses 2 bytes per code unit, it can be encoded either as little-endian (least-significant byte first) or big-endian (most-significant byte first).
 
 <div class="short-rc-and-result">
   
@@ -5457,11 +5457,11 @@ What `resinator` *should* do in this instance [is an open question](https://gith
 
 ## Conclusion
 
-Well, that's all I've got. There's a few things I left out due to them being too insignificant, or because I forgot about some weird behavior I added support for at some point, or because I'm not (yet) aware of some bugs/quirks in the Windows RC compiler. If you got this far, thanks for reading. Like [`resinator`](https://github.com/squeek502/resinator) itself, this ended up taking a lot more effort than I initially anticipated.
+Well, that's all I've got. There's a few things I left out due to them being too insignificant, or because I have forgotten about some weird behavior I added support for at some point, or because I'm not (yet) aware of some bugs/quirks of the Windows RC compiler. If you got this far, thanks for reading. Like [`resinator`](https://github.com/squeek502/resinator) itself, this ended up taking a lot more effort than I initially anticipated.
 
-If there's something to take away from this article, I hope it'd be something about the usefulness of fuzzing (or adjacent techniques) in turning up obscure bugs/behaviors. If you have written software that lends itself to fuzz testing in any way, I highly encourage you to consider trying it out. On `resinator`'s end, there's still a lot left to explore in terms of fuzz testing. I'm not fully happy with my current approach, and there are aspects of `resinator` that are not being properly fuzz tested yet.
+If there's something to take away from this article, I hope it'd be something about the usefulness of fuzzing (or adjacent techniques) in exposing obscure bugs/behaviors. If you have written software that lends itself to fuzz testing in any way, I highly encourage you to consider trying it out. On `resinator`'s end, there's still a lot left to explore in terms of fuzz testing. I'm not fully happy with my current approach, and there are aspects of `resinator` that are not being properly fuzz tested yet.
 
-I've just [released an initial version of standalone `resinator`](https://github.com/squeek502/resinator/releases) if you'd like to try it out (if you're a Zig user, see [this post](https://www.ryanliptak.com/blog/zig-is-a-windows-resource-compiler/) for details on how to use the version of `resinator` included in the Zig compiler). My next steps will be [adding support for converting `.res` files to  COFF object files](https://github.com/squeek502/resinator/issues/7) (in order for Zig to be able to [use its self-hosted linker for Windows resources](https://github.com/ziglang/zig/issues/17751)). As always, I'm expecting that feature to be pretty straightforward to implement, but the precedence is not in my favor for that assumption holding.
+I've just [released an initial version of `resinator` as a standalone program](https://github.com/squeek502/resinator/releases) if you'd like to try it out (if you're a Zig user, see [this post](https://www.ryanliptak.com/blog/zig-is-a-windows-resource-compiler/) for details on how to use the version of `resinator` included in the Zig compiler). My next steps will be [adding support for converting `.res` files to  COFF object files](https://github.com/squeek502/resinator/issues/7), in order for Zig to be able to [use its self-hosted linker for Windows resources](https://github.com/ziglang/zig/issues/17751). As always, I'm expecting COFF object file conversion to be pretty straightforward to implement, but the precedence is definitely not in my favor for that assumption holding.
 
 <div>
 
