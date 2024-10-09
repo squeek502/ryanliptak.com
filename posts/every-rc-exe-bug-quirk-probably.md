@@ -1,9 +1,11 @@
+TODO Audit title attrs
+
 - `7 NOT NOT 4 NOT 2 NOT NOT 1` is a valid expression
 - `٠٠٠` is a valid number that gets parsed into the decimal value 44752
 - A < 1 MiB icon file can get compiled into 127 TiB of data
 - `1 DLGINCLUDE "â"""` results in `‱䱄䥇䍎啌䕄∠⋢∢` after preprocessing
 
-The above is just a very small random sampling of a few of the strange behaviors of the Windows RC compiler (`rc.exe`). All of the above bugs/quirks, and many, many more, will be detailed and explained (to the best of my ability) in this article.
+The above is just a small sampling of a few of the strange behaviors of the Windows RC compiler (`rc.exe`). All of the above bugs/quirks, and many, many more, will be detailed and explained (to the best of my ability) in this post.
 
 <p><aside class="note">
 
@@ -38,7 +40,7 @@ Note: While this list is thorough, it is only indicative of my current understan
 ## Who is this article for?
 
 - If you work at Microsoft, consider this a large list of bug reports (of particular note, see everything labeled 'miscompilation')
-  + If you're [Raymond Chen](https://devblogs.microsoft.com/oldnewthing/author/oldnewthing), then consider this an extension/homage to all the (fantastic, very helpful) blog posts about Windows resources in [The Old New Thing](https://devblogs.microsoft.com/oldnewthing/)
+  + If you're [Raymond Chen](https://devblogs.microsoft.com/oldnewthing/author/oldnewthing), then consider this an extension of/homage to all the (fantastic, very helpful) blog posts about Windows resources in [The Old New Thing](https://devblogs.microsoft.com/oldnewthing/)
 - If you are a contributor to `llvm-rc`, `windres`, or `wrc`, consider this a long list of behaviors to test for (if strict compatibility is a goal)
 - If you are someone that managed to [endure the bad audio of this talk I gave about my resource compiler](https://www.youtube.com/watch?v=RZczLb_uI9E) and wanted more, consider this an extension of that talk
 - If you are none of the above, consider this an entertaining list of bizarre bugs/edge cases
@@ -94,7 +96,7 @@ So, in general, a resource is a blob of data that can be referenced by an ID, pl
 
 <p><aside class="note">
 
-Note: `rc.exe` has been around since the earliest versions of Windows (the old 16-bit `rc.exe` has the copyright years 1985-1992). The RC compiler was then updated for the 32-bit Windows NT in the early 90's, and (as far as I can tell) has been mostly untouched since. So, it's worth keeping in mind that `rc.exe` is very likely made up, in large part, of code written 30+ years ago.
+Note: `rc.exe` has been around since the earliest versions of Windows (the old 16-bit `rc.exe` has the copyright years 1985-1992). The RC compiler was updated for the 32-bit Windows NT in the early 90's, and (as far as I can tell) has been mostly untouched since. So, it's worth keeping in mind that `rc.exe` is very likely made up, in large part, of code written 30+ years ago.
 
 </aside></p>
 
@@ -347,7 +349,7 @@ The entire `(1 | 2)+(2-1 & 0xFF)` expression, spaces and all, is interpreted as 
 
 Yes, that's right, `0xFF`!
 
-For whatever reason, `rc.exe` will just take the last number literal in the expression and try to read from a file with that name, e.g. `(1+1)` will try to read from the path `1`, and `1+-1` will try to read from the path `-1` (the `-` sign is part of the number literal token, this will be detailed later in ["*Unary operators are an illusion*"](#unary-operators-are-an-illusion)).
+For whatever reason, `rc.exe` will just take the last number literal in the expression and try to read from a file with that name, e.g. `(1+2)` will try to read from the path `2`, and `1+-1` will try to read from the path `-1` (the `-` sign is part of the number literal token, this will be detailed later in ["*Unary operators are an illusion*"](#unary-operators-are-an-illusion)).
 
 #### `resinator`'s behavior
 
@@ -769,13 +771,14 @@ Like in C, an integer literal can be suffixed with `L` to signify that it is a '
 
 </div>
 </div>
-<p style="margin:0; text-align: center;"><i class="caption">A <code>RCDATA</code> resource definition and a hexdump of the resulting data in the <code>.res</code> file</i></p>
+<p style="margin:0; text-align: center;"><i class="caption">An <code>RCDATA</code> resource definition and a hexdump of the resulting data in the <code>.res</code> file</i></p>
 
 However, outside of raw data blocks like the `RCDATA` example above, the `L` suffix is typically meaningless, as it has no bearing on the size of the integer used. For example, `DIALOG` resources have `x`, `y`, `width`, and `height` parameters, and they are each encoded in the data as a `u16` regardless of the integer literal used. If the value would overflow a `u16`, then the value is truncated back down to a `u16`, meaning in the following example all 4 parameters after `DIALOG` get compiled down to `1` as a `u16`:
 
 ```rc
 1 DIALOG 1, 1L, 65537, 65537L {}
 ```
+<p style="margin:0; text-align: center;"><i class="caption">The maximum value of a <code>u16</code> is 65535</i></p>
 
 A few particular parameters, though, fully disallow integer literals with the `L` suffix from being used:
 
@@ -807,6 +810,7 @@ test.rc(1) : error RC2145 : PRIMARY LANGUAGE ID too large
 1 VERSIONINFO
   FILEVERSION 1L, 2, 3, 4
 BEGIN
+  // ...
 END
 ```
 
@@ -1281,7 +1285,7 @@ Since `WS_VISIBLE` is set by default, this will unset it and make the button inv
 <span style="opacity: 50%;">}</span></code>
 </pre>
 
-`WS_VISIBLE` and `BS_VCENTER` are `#define`'s that stem from `WinUser.h` and are just numbers under-the-hood. For simplicity's sake, let's pretend their values are `0x1` for `WS_VISIBLE` and `0x2` for `BS_VCENTER` and then focus on this simplified `NOT` expression:
+`WS_VISIBLE` and `BS_VCENTER` are just numbers under-the-hood. For simplicity's sake, let's pretend their values are `0x1` for `WS_VISIBLE` and `0x2` for `BS_VCENTER` and then focus on this simplified `NOT` expression:
 
 <pre><code class="language-c"><span class="token_operator">NOT</span> 0x1 <span class="token_operator">|</span> 0x2</code>
 </pre>
@@ -1922,7 +1926,7 @@ In this example, the button defined in the `DIALOGEX` would start with the text 
 
 ### Escaping quotes is fraught
 
-Again rom the [`STRINGTABLE` resource docs](https://learn.microsoft.com/en-us/windows/win32/menurc/stringtable-resource):
+Again from the [`STRINGTABLE` resource docs](https://learn.microsoft.com/en-us/windows/win32/menurc/stringtable-resource):
 
 > To embed quotes in the string, use the following sequence: `""`. For example, `"""Line three"""` defines a string that is displayed as follows:
 > ```
@@ -2324,7 +2328,7 @@ Note: This lack of surrogate-pair-awareness is actually quite common in Windows,
 
 `resinator` currently attempts to match the Windows RC compiler's behavior exactly, and [emulates the interaction between the preprocessor and wide string escape sequences in its string parser](https://github.com/squeek502/resinator/blob/9a6e50b0c0859e0dee5fd1871d93329e0e1194ef/src/literals.zig#L298-L356).
 
-The reasoning for emulating the Windows RC compiler for escaped tabs/escaped surrogate pairs seems rather debuious, though, so this may change in the future.
+The reasoning for emulating the Windows RC compiler for escaped tabs/escaped surrogate pairs seems rather dubious, though, so this may change in the future.
 
 </div>
 
@@ -2333,7 +2337,7 @@ The reasoning for emulating the Windows RC compiler for escaped tabs/escaped sur
 
 ### `STRINGTABLE` semantics bypass
 
-The [`STRINGTABLE`](https://learn.microsoft.com/en-us/windows/win32/menurc/stringtable-resource) is intended for embedding string data, which can then be loaded at runtime with [`LoadString`](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-loadstringw). A `STRINGTABLE` resource definition looks something like this:
+The [`STRINGTABLE` resource](https://learn.microsoft.com/en-us/windows/win32/menurc/stringtable-resource) is intended for embedding string data, which can then be loaded at runtime with [`LoadString`](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-loadstringw). A `STRINGTABLE` resource definition looks something like this:
 
 ```rc
 STRINGTABLE {
@@ -2355,7 +2359,7 @@ STRINGTABLE {
 }
 ```
 
-The `"Hello"` and `"Goodbye"` strings will be grouped together into one resource, and the `"Hm"` will be put into another. Each group is written as a series of 16 length integers (one for each string within the group), and each length is immediately followed by a UTF-16 encoded string of that length (if the length is non-zero). So, for example, the first group contains the strings with IDs 0-15, so, for the `.rc` file above, the first group would be compiled as:
+The `"Hello"` and `"Goodbye"` strings will be grouped together into one resource, and the `"Hm"` will be put into another. Each group is written as a series of 16 length integers (one for each string within the group), and each length is immediately followed by a UTF-16 encoded string of that length (if the length is non-zero). So, for example, the first group contains the strings with IDs 0-15, meaning, for the `.rc` file above, the first group would be compiled as:
 
 <pre class="hexdump"><code><span class="o1d o-clr3 infotip" title="Length of string ID 0">05 00</span> <span class="bg-clr3 o1s o-clr3">48 00 65 00 6C 00</span>  <span class="o1d o-clr3">..</span><span class="bg-clr3 o1s o-clr3">H.e.l.</span>
 <span class="bg-clr3 o1s o-clr3">6C 00 6F 00</span> <span class="o1d o-clr4 infotip" title="Length of string ID 1">07 00</span> <span class="bg-clr4 o1s o-clr4">47 00</span>  <span class="bg-clr3 o1s o-clr3">l.o.</span><span class="o1d o-clr4">..</span><span class="bg-clr4 o1s o-clr4">G.</span>
@@ -2409,7 +2413,7 @@ In the actual compiled binary of my test program, the bytes following `foo` happ
 <span class="bg-clr3 o1s o-clr3">3C 3F 78 6D 6C 20 76 65</span>  <span class="bg-clr3 o1s o-clr3">&lt;?xml ve</span>
 <span style="opacity:0.5"><span class="bg-clr3 o1s o-clr3">          ...          </span>  <span class="bg-clr3 o1s o-clr3">   ...  </span></span></code></pre>
 
-This means that the last `o` in `foo` happens to be followed by `00`, and `6F 00` is interpreted as a UTF-16 `o` character, and that happens to be followed by `00 00` which is treated as a `NUL` terminator by `wprintf`. This explains the `o` we got earlier from `wprintf(L"%s\n", buf);`. However, if we print the full 1023 bytes of the buf like so:
+This means that the last `o` in `foo` happens to be followed by `00`, and `6F 00` is interpreted as a UTF-16 `o` character, and that happens to be followed by `00 00` which is treated as a `NUL` terminator by `wprintf`. This explains the `o` we got earlier from `wprintf(L"%s\n", buf);`. However, if we print the full 1023 `wchar`'s of the buf like so:
 
 ```c
 for (int i = 0; i < len; i++) {
@@ -2674,7 +2678,7 @@ SCROLLBAR ──► 0x84
 COMBOBOX  ──► 0x85
 ```
 
-There's plenty of precedence within the Windows RC compiler that you can swap out a predefined type for its underlying integer and get the same result, and in indeed the Windows RC compiler does not complain if you try to do so in this case:
+There's plenty of precedence within the Windows RC compiler that you can swap out a predefined type for its underlying integer and get the same result, and indeed the Windows RC compiler does not complain if you try to do so in this case:
 
 <pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="token_keyword">CONTROL</span><span class="token_punctuation">,</span> <span class="token_string">"foo"</span><span class="token_punctuation">,</span> 1<span class="token_punctuation">,</span> <span class="annotation"><span class="desc">class name<i></i></span><span class="subject"><span class="token_identifier">0x80</span></span></span><span class="token_punctuation">,</span> <span class="token_identifier">1</span><span class="token_punctuation">,</span> 2<span class="token_punctuation">,</span> 3<span class="token_punctuation">,</span> 4<span class="token_punctuation">,</span> 5</code></pre>
 
@@ -2723,11 +2727,11 @@ Some examples:
       etc
 ```
 
-I only have the faintest idea of what could be going on here. My guess is that this is some sort of half-baked leftover behavior from the 16-bit resource compiler that never got properly updated in the move to the 32-bit compiler, since in the 16-bit version of `rc.exe`, numbers were compiled as `FF <number as u8>` instead of `FF FF <number as u16>`. However, the result we see doesn't fully match what we'd expect if that were the case&mdash;instead of `FF 80`, we get `80 FF`, so I don't think this explanation holds up.
+I only have the faintest idea of what could be going on here. My guess is that this is some sort of half-baked leftover behavior from the 16-bit resource compiler that never got properly updated in the move to the 32-bit compiler, since in the 16-bit version of `rc.exe`, numbers were compiled as `FF <number as u8>` instead of `FF FF <number as u16>`. However, the results we see don't fully match what we'd expect if that were the case&mdash;instead of `FF 80`, we get `80 FF`, so I don't think this explanation holds up.
 
 <p><aside class="note">
 
-Note also that the `0x80` cutoff is also the cutoff for to the ASCII range, so that might also be relevant (but there's no legitimate reason for it to be).
+Note also that the `0x80` cutoff is also the cutoff for to the ASCII range, so that might also be relevant (but I don't think there's any legitimate reason for it to be).
 
 </aside></p>
 
@@ -3316,7 +3320,7 @@ test.rc(2) : error RC2135 : file not found: RCDATA
 </div>
 </div>
 
-But that's not all; take this, for example, where we define a `RCDATA` resource using a raw data block:
+But that's not all; take this, for example, where we define an `RCDATA` resource using a raw data block:
 
 ```rc
 1 RCDATA { 1, ), ), ), 2 }
@@ -3336,7 +3340,7 @@ I said 'skip' because that's truly what seems to happen. For example, for resour
 <span style="opacity: 50%;">}</span></code>
 </pre>
 
-If you replace the `<id>` parameter (`1`) with `)`, then all the parameters shift over and they get interpreted like this instead:
+If you replace the `<id>` parameter of `1` with `)`, then all the parameters shift over and they get interpreted like this instead:
 
 <pre><code class="language-none"><span style="opacity: 50%;">1 DIALOGEX 1, 2, 3, 4 {</span>
   <span class="token_comment">//        &lt;text&gt;     &lt;id&gt; &lt;x&gt; &lt;y&gt; &lt;w&gt; &lt;h&gt;</span>
@@ -3364,7 +3368,7 @@ test.rc(1) : error RC1013 : mismatched parentheses
 </div>
 </div>
 
-Instead, `(` was [bestowed a different power](#the-strange-power-of-the-sociable-open-parenthesis).
+Instead, `(` was bestowed a different power, which we'll see next.
 
 #### `resinator`'s behavior
 
@@ -3392,7 +3396,7 @@ This is (somehow) allowed:
 1 DIALOGEX 1(, (2, (3(, ((((4(((( {}
 ```
 
-And in the above case, the parameters are interpreted as if the `(` characters don't exist, e.g. they compile to the values `1`, `2`, `3`, and `4`.
+In the above case, the parameters are interpreted as if the `(` characters don't exist, e.g. they compile to the values `1`, `2`, `3`, and `4`.
 
 This power of `(` does not have infinite reach, though&mdash;in other places a `(` leads to an mismatched parentheses error as you might expect:
 
@@ -3564,7 +3568,7 @@ Note: This is not really comma-related, this is just a tangentially-related side
 
 </aside></p>
 
-Continuing on with the `FONT` statement of `DIALOGEX` resource: as we saw in ["*If you're not last, you're irrelevant*"](#if-you-re-not-last-you-re-irrelevant), if there are duplicate statements of the same type, all but the last one is ignored:
+Continuing on with the `FONT` statement of `DIALOGEX` resources: as we saw in ["*If you're not last, you're irrelevant*"](#if-you-re-not-last-you-re-irrelevant), if there are duplicate statements of the same type, all but the last one is ignored:
 
 ```rc
 1 DIALOGEX 1, 2, 3, 4
@@ -3716,7 +3720,7 @@ So, somehow, the subtraction of the zero caused the `BEGIN expected in dialog` e
 
 `resinator` does not treat subtracting zero as special, and therefore never errors on any expressions that subtract zero.
 
-Ideally, a warning would be emitted in cases where the Windows RC compiler would error, but detecting when that would be the case is not something I'm capable of doing currently.
+Ideally, a warning would be emitted in cases where the Windows RC compiler would error, but detecting when that would be the case is not something I'm capable of doing currently due to my lack of understanding of this bug/quirk.
 
 </div>
 
@@ -3932,7 +3936,7 @@ The undocumented `/z` option almost always errors with
 fatal error RC1212: invalid option - /z argument missing substitute font name
 ```
 
-To avoid this error, a value with `/` in it seems to do the trick (e.g. `rc.exe /z foo/bar test.rc`), but it's still unclear to me what (if any) purpose this option has. The title of ["*No one has thought about `FONT` resources for decades*"](#no-one-has-thought-about-font-resources-for-decades) is probably relevant here, too.
+To avoid this error, a value with `/` in it seems to do the trick (e.g. `rc.exe /z foo/bar test.rc`), but it's still unclear to me what purpose (if any) this option has. The title of ["*No one has thought about `FONT` resources for decades*"](#no-one-has-thought-about-font-resources-for-decades) is probably relevant here, too.
 
 ##### `resinator`'s behavior
 
@@ -3988,7 +3992,7 @@ Note: Coincidentally, this second example of the deprecated syntax comes from th
 
 The purpose of this resource seems like it could be similar to `controlData` in `DIALOGEX` resources (as detailed in ["*That's odd, I thought you needed more padding*"](#that-s-odd-i-thought-you-needed-more-padding))&mdash;that is, it is used to specify control-specific data that is loaded/utilized when initializing a particular control within a dialog.
 
-Here's and example from [`bits_ie.rc` of Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples/blob/main/Samples/Win7Samples/web/bits/bits_ie/bits_ie.rc):
+Here's an example from [`bits_ie.rc` of Windows-classic-samples](https://github.com/microsoft/Windows-classic-samples/blob/main/Samples/Win7Samples/web/bits/bits_ie/bits_ie.rc):
 
 ```rc
 IDD_DIALOG DLGINIT
@@ -4079,7 +4083,7 @@ With the `TOOLBAR` and `BITMAP` resources together, and with a `CreateToolbarEx`
 
 <div style="text-align: center;">
 <img style="margin-left:auto; margin-right:auto; display: block;" src="/images/every-rc-exe-bug-quirk-probably/toolbar-gui.png">
-<p style="margin-top: .5em;"><i class="caption">The toolbar as displayed in the GUI; note the gaps between some of the buttons which were defined in the <code>.rc</code> file</i></p>
+<p style="margin-top: .5em;"><i class="caption">The toolbar as displayed in the GUI; note the gaps between some of the buttons (the gaps were specified in the <code>.rc</code> file)</i></p>
 </div>
 
 #### `resinator`'s behavior
@@ -4092,6 +4096,8 @@ With the `TOOLBAR` and `BITMAP` resources together, and with a `CreateToolbarEx`
 <span class="bug-quirk-category">utterly baffling</span>
 
 ### Certain `DLGINCLUDE` filenames break the preprocessor
+
+TODO link to zip with reproductions
 
 <p><aside class="note">
 
@@ -4178,6 +4184,8 @@ Some commonalities between all the reproductions of this bug I've found so far:
 <span class="bug-quirk-category">utterly baffling</span>
 
 ### Certain `DLGINCLUDE` filenames trigger `missing '=' in EXSTYLE=<flags>` errors
+
+TODO link to zip with reproductions
 
 <p><aside class="note">
 
@@ -4685,7 +4693,7 @@ it becomes this after preprocessing:
 
 Additionally, as briefly mentioned in ["*Special tokenization rules for names/IDs*"](#special-tokenization-rules-for-names-ids), the Windows RC compiler treats any ASCII character from `0x05` to `0x20` (inclusive) as whitespace for the purpose of tokenization. However, it turns out that this is *not* the set of characters that the *preprocessor* treats as whitespace.
 
-To determine what the preprocessor considers to be whitespace, we can take advantage of its whitespace collapsing behavior. For example, if we run the following example through the preprocessor, we will see that it does not get collapsed, so therefore we know the preprocessor does not consider <code><span class="token_unrepresentable" title="U+0005 Enquiry">&lt;0x05&gt;</span></code> to be whitespace:
+To determine what the preprocessor considers to be whitespace, we can take advantage of its whitespace collapsing behavior. For example, if we run the following script through the preprocessor, we will see that it does not get collapsed, so therefore we know the preprocessor does not consider <code><span class="token_unrepresentable" title="U+0005 Enquiry">&lt;0x05&gt;</span></code> to be whitespace:
 
 <pre><code class="language-rc"><span class="token_identifier">1</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_keyword">RCDATA</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_punctuation">{</span>
 <span class="token_unrepresentable" title="U+0005 Enquiry">&lt;0x05&gt;</span>   <span class="token_string">"this was indented"</span><span class="token_rc_whitespace token_whitespace">
@@ -4739,7 +4747,7 @@ In terms of practical consequences of this mismatch in whitespace characters bet
 
 #### `resinator`'s behavior
 
-`resinator` does not currently handle this very well. There's some support for [handling `U+00A0` (No-Break Space)](https://github.com/squeek502/resinator/blob/a2a8f61fbdabdc2339a3a36ab1ce44b73e682177/src/lex.zig#L286-L291) at the start of a line in the tokenizer due to a previously incomplete understanding of this bug/quirk, but I'm currently in the process of considering how this would best be handled.
+`resinator` does not currently handle this very well. There's some support for [handling `U+00A0` (No-Break Space)](https://github.com/squeek502/resinator/blob/a2a8f61fbdabdc2339a3a36ab1ce44b73e682177/src/lex.zig#L286-L291) at the start of a line in the tokenizer due to a previously incomplete understanding of this bug/quirk, but I'm currently in the process of considering how this should best be handled.
 
 TODO: Update if resinator handles this differently
 
@@ -4828,7 +4836,7 @@ In UTF-8, the byte value `0x80` is a continuation byte, so it makes sense that, 
 <span class="token_punctuation">}</span></code></pre>
 <p style="margin:0; text-align: center;"><i class="caption"><code>E2 82 AC</code> is the UTF-8 encoding of € (<a href="https://codepoints.net/U+20AC"><code>U+20AC</code></a>)</i></p>
 
-An extra wrinkle comes when dealing with octal escapes. `0xFF` in octal is `0o377`, which means that octal escape sequences need to accept 3 digits in order to specify all possible values of a `u8`. However, this also means that octal escape sequences can encode values above the maximum `u8` value (`0xFF`), e.g. `\777` (the maximum escaped octal integer) represents the value 511 in decimal or `0x1FF` in hexadecimal. This is handled by the Windows RC compiler by truncating the value down to a `u8`, so e.g. `\777` gets parsed into `0x1FF` but then gets truncated down to `0xFF` before then going through the steps mentioned before.
+An extra wrinkle comes when dealing with octal escapes. `0xFF` in octal is `0o377`, which means that octal escape sequences need to accept 3 digits in order to specify all possible values of a `u8`. However, this also means that octal escape sequences can encode values above the maximum `u8` value, e.g. `\777` (the maximum escaped octal integer) represents the value 511 in decimal or `0x1FF` in hexadecimal. This is handled by the Windows RC compiler by truncating the value down to a `u8`, so e.g. `\777` gets parsed into `0x1FF` but then gets truncated down to `0xFF` before then going through the steps mentioned before.
 
 Here's an example where three different escaped integers end up compiling down to the same result, with the last one only being equal after truncation:
 
@@ -4857,7 +4865,7 @@ Finally, things get a little more bizarre when combined with ["*The entirely und
 
 #### Why?
 
-This one is truly baffling to me. If this behavior is intentional, I don't understand the use-case *at all*. It effectively means that it's impossible to use escaped integers to specify certain values, and it also means that which values those are depend on the current code page. For example, if the code page is Windows-1252, it's impossible to use escaped integers for the values `0x80`, `0x82`-`0x8C`, `0x8E`, `0x91`-`0x9C`, and `0x9E`-`0x9F` (each of these is mapped to a codepoint with a different value). If the code page is UTF-8, then it's impossible to use escaped integers for any of the values from `0x80`-`0xFF` (all of these are treated as part of a invalid UTF-8 sequence and converted to �). This limitation seemingly defeats the entire purpose of escaped integer sequences.
+This one is truly baffling to me. If this behavior is intentional, I don't understand the use-case *at all*. It effectively means that it's impossible to use escaped integers to specify certain values, and it also means that which values those are depends on the current code page. For example, if the code page is Windows-1252, it's impossible to use escaped integers for the values `0x80`, `0x82`-`0x8C`, `0x8E`, `0x91`-`0x9C`, and `0x9E`-`0x9F` (each of these is mapped to a codepoint with a different value). If the code page is UTF-8, then it's impossible to use escaped integers for any of the values from `0x80`-`0xFF` (all of these are treated as part of a invalid UTF-8 sequence and converted to �). This limitation seemingly defeats the entire purpose of escaped integer sequences.
 
 This leads me to believe this is a bug, and even then, it's a *very* strange bug. There is absolutely no reason I can conceive of for the *result of a parsed integer escape* to be *accidentally* re-interpreted as if it were encoded as the current code page.
 
@@ -5429,7 +5437,7 @@ So, for a parser that removes comments, it makes sense to hold off on emitting t
 
 <p><aside class="note">
 
-Fun Fact: While writing this article, I realized that I [had a very similar bug in my implementation](https://github.com/squeek502/resinator/commit/369b4e0c1039431afe04820399076dc245dd5515).
+Fun fact: While writing this article, I realized that I [had a very similar bug in my implementation](https://github.com/squeek502/resinator/commit/369b4e0c1039431afe04820399076dc245dd5515).
 
 </aside></p>
 
@@ -5447,9 +5455,13 @@ What `resinator` *should* do in this instance [is an open question](https://gith
 
 </div>
 
-TODO: brief descriptions of potential bugs/quirks
-- `text` param of dialog controls can be a number, but not a number expression
-- L suffix in number expressions are infectious: `1L + 65537` results in a u32 with value 65538
+## Conclusion
+
+Well, that's all I've got. There's a few things I left out due to them being too insignificant, or because I forgot about some weird behavior I added support for at some point, or because I'm not (yet) aware of some bugs/quirks in the Windows RC compiler. If you got this far, thanks for reading. Like [`resinator`](https://github.com/squeek502/resinator) itself, this ended up taking a lot more effort than I initially anticipated.
+
+If there's something to take away from this article, I hope it'd be something about the usefulness of fuzzing (or adjacent techniques) in turning up obscure bugs/behaviors. If you have written software that lends itself to fuzz testing in any way, I highly encourage you to consider trying it out. On `resinator`'s end, there's still a lot left to explore in terms of fuzz testing. I'm not fully happy with my current approach, and there are aspects of `resinator` that are not being properly fuzz tested yet.
+
+I've just [released an initial version of standalone `resinator`](https://github.com/squeek502/resinator/releases) if you'd like to try it out (if you're a Zig user, see [this post](https://www.ryanliptak.com/blog/zig-is-a-windows-resource-compiler/) for details on how to use the version of `resinator` included in the Zig compiler). My next steps will be [adding support for converting `.res` files to  COFF object files](https://github.com/squeek502/resinator/issues/7) (in order for Zig to be able to [use its self-hosted linker for Windows resources](https://github.com/ziglang/zig/issues/17751)). As always, I'm expecting that feature to be pretty straightforward to implement, but the precedence is not in my favor for that assumption holding.
 
 <div>
 
