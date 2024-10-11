@@ -1,7 +1,7 @@
 - `7 NOT NOT 4 NOT 2 NOT NOT 1` is a valid expression
-- `٠٠٠` is a valid number that gets parsed into the decimal value 44752
+- `०००` is a number that gets parsed into the decimal value 65130
 - A < 1 MiB icon file can get compiled into 127 TiB of data
-- `1 DLGINCLUDE "â"""` results in `‱䱄䥇䍎啌䕄∠⋢∢` after preprocessing
+- `1 DLGINCLUDE "â"""` becomes `‱䱄䥇䍎啌䕄∠⋢∢` after preprocessing
 
 The above is just a small sampling of a few of the strange behaviors of the Windows RC compiler (`rc.exe`). All of the above bugs/quirks, and many, many more, will be detailed and explained (to the best of my ability) in this post.
 
