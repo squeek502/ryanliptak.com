@@ -1,5 +1,3 @@
-TODO Audit title attrs
-
 - `7 NOT NOT 4 NOT 2 NOT NOT 1` is a valid expression
 - `٠٠٠` is a valid number that gets parsed into the decimal value 44752
 - A < 1 MiB icon file can get compiled into 127 TiB of data
@@ -4097,8 +4095,6 @@ With the `TOOLBAR` and `BITMAP` resources together, and with a `CreateToolbarEx`
 
 ### Certain `DLGINCLUDE` filenames break the preprocessor
 
-TODO link to zip with reproductions
-
 <p><aside class="note">
 
 Note: See ["*Undocumented resource types*"](#dlginclude) for details on the `DLGINCLUDE` resource
@@ -4174,6 +4170,12 @@ Some commonalities between all the reproductions of this bug I've found so far:
 - The byte count of the `.rc` file is even, no reproduction has had a filesize with an odd byte count.
 - The number of distinct sequences (a byte, an escaped integer, or an escaped quote) in the filename string has to be small (min: 2, max: 18)
 
+<p><aside class="note">
+
+Here's a `.zip` file containing a bunch of files that reproduce this bug: [dlginclude_breaks_the_preprocessor.zip](https://www.ryanliptak.com/misc/dlginclude_breaks_the_preprocessor.zip)
+
+</aside></p>
+
 #### `resinator`'s behavior
 
 `resinator` avoids this bug and handles the affected strings the same way that other `DLGINCLUDE` strings are handled by the Windows RC compiler
@@ -4184,8 +4186,6 @@ Some commonalities between all the reproductions of this bug I've found so far:
 <span class="bug-quirk-category">utterly baffling</span>
 
 ### Certain `DLGINCLUDE` filenames trigger `missing '=' in EXSTYLE=<flags>` errors
-
-TODO link to zip with reproductions
 
 <p><aside class="note">
 
@@ -4235,6 +4235,12 @@ I have two possible theories of what might be going on here:
 2. There's a lot of undefined behavior being invoked here, and it just so happens that some random (normally impossible?) error is the result
 
 I'm leaning more towards option 2, since there's no obvious reason why the strings that reproduce the error would cause any error at all. One point against it, though, is that I've found quite a few different reproductions that all trigger the same error&mdash;the only real commonality in the reproductions is that they all have around 240 to 250 distinct characters/escape sequences within the `DLGINCLUDE` string literal.
+
+<p><aside class="note">
+
+Here's a `.zip` file containing a bunch of files that reproduce this bug: [dlginclude_missing_equal_in_exstyle.zip](https://www.ryanliptak.com/misc/dlginclude_missing_equal_in_exstyle.zip)
+
+</aside></p>
 
 #### `resinator`'s behavior
 
@@ -4749,8 +4755,6 @@ In terms of practical consequences of this mismatch in whitespace characters bet
 
 `resinator` does not currently handle this very well. There's some support for [handling `U+00A0` (No-Break Space)](https://github.com/squeek502/resinator/blob/a2a8f61fbdabdc2339a3a36ab1ce44b73e682177/src/lex.zig#L286-L291) at the start of a line in the tokenizer due to a previously incomplete understanding of this bug/quirk, but I'm currently in the process of considering how this should best be handled.
 
-TODO: Update if resinator handles this differently
-
 </div>
 
 <div class="bug-quirk-box">
@@ -4821,8 +4825,6 @@ It is possible for string literals within `.rc` files to contain byte sequences 
 Note: Invalid sequences can span multiple bytes, e.g. <code><span class="token_unrepresentable" title="Valid start byte of a 3-byte sequence">&lt;0xE1&gt;</span><span class="token_unrepresentable" title="Valid continuation byte">&lt;0xA0&gt;</span></code> will get compiled into one `�`, while <code><span class="token_unrepresentable" title="Valid start byte of a 2-byte sequence">&lt;0xC5&gt;</span><span class="token_unrepresentable" title="Invalid byte, unused in UTF-8">&lt;0xFF&gt;</span></code> will be treated as two invalid sequences and get compiled into `��`. The algorithm for this is similar to what's detailed in ["U+FFFD Substitution of Maximal Subparts" from the Unicode Standard](https://www.unicode.org/versions/Unicode16.0.0/core-spec/chapter-3/#G66453), but it is not entirely the same.
 
 It's possible that the differences to the Unicode algorithm should be included in this article as their own bug/quirk, but I've made the choice to omit those details.
-
-TODO: Maybe actually write this section, also include differences in the Windows-1252 best fit
 
 </aside></p>
 
