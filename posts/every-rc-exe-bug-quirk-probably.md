@@ -4780,18 +4780,18 @@ However, in other contexts, the result is *always* encoded as UTF-16, and, in th
 We can also ignore `L` prefixed strings (wide strings) from here on out, since they aren't actually any different in this context than any other. The bug/quirk in question only manifests for "normal" strings that are parsed/compiled into UTF-16, so for the sake of clarity, I'm going to call such strings "forced-wide" strings. For all other strings except "forced-wide" strings, integer escape sequences (e.g. `\x80` [hexadecimal] or `\123` [octal]) are handled as you might expect&mdash;the number they encode is directly emitted, so e.g. the sequence `\x80` always gets compiled into the integer value `0x80`, and then either written as a `u8` or a `u16` as seen here:
 
 <pre class="hexdump"><code class="language-rc"><span class="token_identifier">1</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_keyword">RCDATA</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_punctuation">{</span><span class="token_rc_whitespace token_whitespace">
-  </span><span class="token_string">"\x80"</span><span class="token_punctuation">,</span>    <span class="token_function">────►</span>  <span class="infotip o1o o-clr1" title="Hexdump of the compiled result of &quot;foo&quot;">80</span>
-  <span class="token_identifier">L</span><span class="token_string">"\x80"</span>    <span class="token_function">────►</span>  <span class="infotip o1o o-clr2" title="Hexdump of the compiled result of L&quot;foo&quot;">80 00</span>
+  </span><span class="token_string">"\x80"</span><span class="token_punctuation">,</span>    <span class="token_function">────►</span>  <span class="infotip o1o o-clr1" title="Hexdump of the compiled result of &quot;\x80&quot;">80</span>
+  <span class="token_identifier">L</span><span class="token_string">"\x80"</span>    <span class="token_function">────►</span>  <span class="infotip o1o o-clr2" title="Hexdump of the compiled result of L&quot;\x80&quot;">80 00</span>
 <span class="token_punctuation">}</span>
 
 <span class="token_keyword">STRINGTABLE</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_punctuation">{</span>
-  1 <span class="token_identifier">L</span><span class="token_string">"\x80"</span>  <span class="token_function">────►</span>  <span class="infotip o1o o-clr3" title="Hexdump of the compiled result of L&quot;foo&quot;">80 00</span>
+  1 <span class="token_identifier">L</span><span class="token_string">"\x80"</span>  <span class="token_function">────►</span>  <span class="infotip o1o o-clr3" title="Hexdump of the compiled result of L&quot;\x80&quot;">80 00</span>
 <span class="token_punctuation">}</span></code></pre>
 
 However, for "forced-wide" strings, this is not the case:
 
 <pre class="hexdump"><code class="language-rc"><span class="token_keyword">STRINGTABLE</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_punctuation">{</span>
-  1 <span class="token_string">"\x80"</span>  <span class="token_function">────►</span>  <span class="infotip o1o o-clr3" title="Hexdump of the compiled result of L&quot;foo&quot;">AC 20</span>
+  1 <span class="token_string">"\x80"</span>  <span class="token_function">────►</span>  <span class="infotip o1o o-clr3" title="Hexdump of the compiled result of &quot;\x80&quot;">AC 20</span>
 <span class="token_punctuation">}</span></code></pre>
 
 Why is the result `AC 20`? Well, for these "forced-wide" strings, the escape sequence is parsed, *then that value is re-interpreted using the current code page*, and then the *resulting codepoint* is written as UTF-16. In the above example, the current code page is [Windows-1252](https://en.wikipedia.org/wiki/Windows-1252) (the default), so this is what's going on:
@@ -4804,7 +4804,7 @@ Why is the result `AC 20`? Well, for these "forced-wide" strings, the escape seq
 This means that if we use a different code page, then the compiled result will also be different. If we use `rc.exe /c65001` to set the code page to UTF-8, then this is what we get:
 
 <pre class="hexdump"><code class="language-rc"><span class="token_keyword">STRINGTABLE</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_punctuation">{</span>
-  1 <span class="token_string">"\x80"</span>  <span class="token_function">────►</span>  <span class="infotip o1o o-clr3" title="Hexdump of the compiled result of L&quot;foo&quot;">FD FF</span>
+  1 <span class="token_string">"\x80"</span>  <span class="token_function">────►</span>  <span class="infotip o1o o-clr3" title="Hexdump of the compiled result of &quot;\x80&quot;">FD FF</span>
 <span class="token_punctuation">}</span></code></pre>
 
 `FD FF` is the little-endian UTF-16 encoding of the codepoint [`U+FFFD`](https://codepoints.net/U+FFFD) (� aka the Replacement Character). The explanation for this result is a bit more involved, so let's take a brief detour...
