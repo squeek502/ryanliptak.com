@@ -5381,17 +5381,15 @@ test.rc:1:1: error: character '\x7F' is not allowed
 
 or the miscompilation is avoided and a warning is emitted:
 
-```resinatorerror
-test.rc:1:12: warning: codepoint U+0900 within a string literal would be miscompiled by the Win32 RC compiler (it would get treated as U+0009)
-1 RCDATA { "ऀ਀਍ഀ " }
-           ^~~~~~~
-```
-```resinatorerror
-test.rc:1:12: warning: codepoint U+FFFF within a string literal would cause the entire file to be miscompiled by the Win32 RC compiler
-1 RCDATA { "￿" }
-           ^~~
-test.rc:1:12: note: the presence of this codepoint causes all non-ASCII codepoints to be byteswapped by the Win32 RC preprocessor
-```
+<pre><code class="language-resinatorerror"><span class="token_diagnostic token_bold">test.rc:1:12:</span><span class="token_warning token_bold"> warning:</span><span class="token_diagnostic token_bold"> codepoint U+0900 within a string literal would be miscompiled by the Win32 RC compiler (it would get treated as U+0009)
+</span><span class="token_default">1 RCDATA { "ऀ਀਍ഀ&#x2000;" }
+</span><span class="token_selector">           ^~~~~~~
+</span><span class="token_default"></span></code></pre>
+<pre><code class="language-resinatorerror"><span class="token_diagnostic token_bold">test.rc:1:12:</span><span class="token_warning token_bold"> warning:</span><span class="token_diagnostic token_bold"> codepoint U+FFFF within a string literal would cause the entire file to be miscompiled by the Win32 RC compiler
+</span><span class="token_default">1 RCDATA { "&#xFFFF;" }
+</span><span class="token_selector">           ^~~
+</span><span class="token_default"></span><span class="token_diagnostic token_bold">test.rc:1:12:</span><span class="token_note token_bold"> note:</span><span class="token_diagnostic token_bold"> the presence of this codepoint causes all non-ASCII codepoints to be byteswapped by the Win32 RC preprocessor
+</span><span class="token_default"></span></code></pre>
 
 </div>
 
