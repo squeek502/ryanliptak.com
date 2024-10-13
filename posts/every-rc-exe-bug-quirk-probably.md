@@ -2610,7 +2610,7 @@ Cannot find window class.
 
 Why would that be? Well, it turns out that the Windows RC compiler miscompiles the padding bytes following a control if its control data has an odd number of bytes. This is similar to what's described in ["*Your fate will be determined by a comma*"](#your-fate-will-be-determined-by-a-comma), but in the opposite direction: instead of adding too few padding bytes, the Windows RC compiler in this case will add *too many*.
 
-Each control within a dialog resource is expected to be 4-byte aligned (meaning its memory starts at an offset that is a multiple of 4). So, if the bytes at end of one control looks like this, where the dotted boxes represent 4-byte boundaries:
+Each control within a dialog resource is expected to be 4-byte aligned (meaning its memory starts at an offset that is a multiple of 4). So, if the bytes at the end of one control looks like this, where the dotted boxes represent 4-byte boundaries:
 
 <pre class="hexdump" style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
   <code class="language-none"><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(255,0,0,.1);">....</span></span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(255,0,0,.1);">....</span></span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;"><span style="background: rgba(255,0,0,.1);">foo</span>&nbsp;</span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;">&nbsp;&nbsp;&nbsp;&nbsp;</span><span class="o1o o-clr2" style="display: inline-block; line-height: 2rem;">&nbsp;&nbsp;&nbsp;&nbsp;</span></code>
@@ -2714,12 +2714,12 @@ Some examples:
  0x00 ──► 00 00
  0x01 ──► 01 00 00 00
  0x7F ──► 7F 00 00 00
- 0x80 ──► FF 80 00 00
+ 0x80 ──► 80 FF 00 00
  0xFF ──► FF FF 00 00
 0x100 ──► 00 00
 0x101 ──► 01 00 00 00
 0x17F ──► 7F 00 00 00
-0x180 ──► FF 80 00 00
+0x180 ──► 80 FF 00 00
 0x1FF ──► FF FF 00 00
       etc
 ```
