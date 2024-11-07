@@ -3695,7 +3695,7 @@ The only additional information I have is that the following:
 1 DIALOGEX 1, 2, 3, 10-0x0+5 {} hello
 ```
 
-will error, and with the `/verbose` flag set, `rc.exe` will output:
+will error, and with the `/v` flag (meaning 'verbose') set, `rc.exe` will output:
 
 ```
 test.rc.
