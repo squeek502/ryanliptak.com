@@ -2070,7 +2070,7 @@ Literal tab characters (`U+009`) within an `.rc` file get transformed by the pre
 
 #### `resinator`'s behavior
 
-`resinator` matches the Win32 RC compiler behavior, but emits a warning
+`resinator` matches the Windows RC compiler behavior, but emits a warning
 
 ```resinatorerror
 test.rc:2:4: warning: the tab character(s) in this string will be converted into a variable number of spaces (determined by the column of the tab character in the .rc file)
