@@ -2,6 +2,9 @@
 {{#site.posts}}
 <div class="blog">
 <h3><a href="/{{{url}}}">{{{title}}}</a></h3>
+{{#subtitle}}
+<div class="subtitle">{{{subtitle}}}</div>
+{{/subtitle}}
 <time>{{date}}</time>
 {{#categoryDisplay}}
  - <a href="/{{{url}}}">{{category}}</a>

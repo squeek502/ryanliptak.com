@@ -1,6 +1,9 @@
 {{> header}}
 <div class="blog-post">
 <h1>{{{page.title}}}</h1>
+{{#page.subtitle}}
+<div class="subtitle">{{{page.subtitle}}}</div>
+{{/page.subtitle}}
 <time>{{page.date}}</time>
 {{#page.categoryDisplay}}
  - <a href="/{{{url}}}">{{category}}</a>
