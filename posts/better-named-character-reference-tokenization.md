@@ -1,20 +1,20 @@
 <p><aside class="note">
 
-Note: I am not a 'browser engine' person, nor a 'data structures' person, and this corner of the major browsers hasn't received any attention for a *very* long time. I would bet that an even better implementation than what I came up with is very possible.
+Note: I am not a 'browser engine' person, nor a 'data structures' person; this corner of the major browsers just hasn't received any attention for a *very* long time. It's almost certain that an even better implementation than what I came up with is very possible.
 
 </aside></p>
 
 A while back, for no real reason, I tried writing an implementation of a data structure tailored to the specific use case of [the *Named character reference state*](https://html.spec.whatwg.org/multipage/parsing.html#named-character-reference-state) of HTML tokenization (here's the [link to that](https://github.com/squeek502/named-character-references)). Recently, I took that implementation, ported it to C++, and [used it to make some efficiency gains and fix some spec compliance issues](https://github.com/LadybirdBrowser/ladybird/pull/3011) in the [Ladybird browser](https://ladybird.org/).
 
-Throughout this, I never actually looked at the implementations used in any of the major browser engines. However, now that I *have* looked at Blink/WebKit/Gecko, I've realized that my implementation seems to be better across all the metrics that the browser engines care about:
+Throughout this, I never actually looked at the implementations used in any of the major browser engines. However, now that I *have* looked at Blink/WebKit/Gecko, I've realized that my implementation seems to be at least somewhat better across all the metrics that the browser engines care about:
 
-- Efficiency
-- Compactness of the data
+- Efficiency (only marginally faster at best, though)
+- Compactness of the data (~60% of the size)
 - Ease of use
 
 <p><aside class="note">
 
-Note: I'm confident these are the metrics of interest because, in [the python script](https://chromium.googlesource.com/chromium/blink.git/+/fd3f05070d1f47388b570d25159908da76eb9577/Source/core/html/parser/create-html-entity-table) that generates the data structures used for named character reference tokenization in Blink (the browser engine of Chromium), it contains this docstring (emphasis mine):
+Note: I'm confident these are the metrics of interest because, in [the python script](https://github.com/chromium/chromium/blob/8469b0ca44e36be251999cc819ff96dc3ac43290/third_party/blink/renderer/build/scripts/make_html_entity_table.py#L29-L32) that generates the data structures used for named character reference tokenization in Blink (the browser engine of Chromium), it contains this docstring (emphasis mine):
 
 <pre><code class="language-python"><span class="token_string">"""This python script creates the raw data that is our entity
 database. The representation is one string database containing all
@@ -34,7 +34,7 @@ So, I thought I'd take you through what I came up with and how it compares to th
 - Only contains ASCII characters
 - Case-sensitive
 - Usually, but not always, ends with `;`
-- Usually maps to one grapheme (i.e. most second code points are combining code points), but not always (e.g. `&fjlig;` maps to `U+066 U+006A` which are just the ASCII letters `fj`)
+- Usually maps to one grapheme (i.e. most second code points are combining code points), but not always (e.g. `&fjlig;` maps to `U+0066 U+006A` which are just the ASCII letters `fj`)
 
 Most crucially, though, the mappings of named characters references are fixed. The [HTML standard](https://html.spec.whatwg.org/multipage/named-characters.html#named-character-references) contains this note about named character references:
 
@@ -54,7 +54,7 @@ I'm specifically going to be talking about the [*Named character reference state
 
 > Consume the maximum number of characters possible, where the consumed characters are one of the identifiers in the first column of the named character references table.
 
-This sentence is really the crux of the implementation, but the spec is quite hand-wavy here (and this is in stark contrast to a lot of the rest of the parsing spec, which is quite clear). The example given later hints at why the above sentence is not so straightforward (edited to exclude irrelevant details):
+This sentence is really the crux of the implementation, but the spec is quite hand-wavy here and it conceals a lot of complexity. The example given later hints at why the above sentence is not so straightforward (edited to exclude irrelevant details):
 
 <p><aside class="note">
 
@@ -141,7 +141,7 @@ Here's an example with `&notinvc;`:
 
 We could use use a second data structure like a hash map to look up matching words after the fact, but that would mean sacrificing a lot of the data savings that we're using a DAFSA for in the first place. To give an idea of the amount of extra data involved, a hash map, at the absolute minimum (i.e. ignoring *all* overhead), would need to store the bytes of all possible named character references, which ends up being 16,641. The values would then take an additional 8,924 bytes.
 
-With DAFSA nodes that are 4-byte aligned, the nodes themselves would require 15,488 bytes. So, with the DAFSA + a separate hash map, it'd need a minimum total of 41,053 bytes to store the data. Still less than the full trie, and there are probably ways to cut down the size further, i.e. using some sort of custom hashing scheme/minimal perfect hashing, but, luckily, we can avoid all that because it turns out it is possible to do...
+With DAFSA nodes that are 4-byte aligned, the nodes themselves would require 15,488 bytes. So, with the DAFSA + a separate hash map, it'd need a minimum total of 41,053 bytes to store the data. Still less than the full trie, and there are probably ways to cut down the size further, i.e. using some sort of custom hashing scheme/minimal perfect hashing, but, luckily, we don't have to worry about that because it turns out it is possible to do...
 
 ### Minimal perfect hashing using a DAFSA
 
