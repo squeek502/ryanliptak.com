@@ -84,6 +84,7 @@ ul.social-links li a svg { display: inline-block; width: 32px; height: 32px; fil
   margin-top: 1rem;
 }
 .blog > h3 { margin: 0; }
+.blog > .subtitle { font-style: italic; }
 
 h1, h2, h3, h4, h5, h6 {
   font-weight: normal;
@@ -91,6 +92,9 @@ h1, h2, h3, h4, h5, h6 {
 
 .blog-post h2, .blog-post h3, .blog-post h4, .blog-post h5, .blog-post h6 {
   border-bottom: 1px solid rgba(0,0,0,.25);
+}
+.blog-post > .subtitle {
+  font-style: italic;
 }
 
 .post-feedback { font-style: italic; margin-top: 2rem; }
