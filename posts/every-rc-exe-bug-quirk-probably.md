@@ -1129,14 +1129,16 @@ END
 
 and here's the Properties window of an `.exe` compiled with and without commas between all the key/value pairs:
 
+TODO: Move styles into classes, grid when > some width, stop grid when below
+
 <div style="display: grid; grid-gap: 10px; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));">
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<img style="margin-left:auto; margin-right:auto; display: block; margin-bottom: 8px; display: flex; flex-direction: column; flex-grow: 1;" src="/images/every-rc-exe-bug-quirk-probably/versioninfo-correct.png">
+<img style="margin-left:auto; margin-right:auto; display: block; margin-bottom: 8px; display: flex; flex-direction: column; flex-grow: 1; max-width: 100%;" src="/images/every-rc-exe-bug-quirk-probably/versioninfo-correct.png">
 <i class="caption">Correct version information with commas included...</i>
 </div>
 
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-<img style="margin-left:auto; margin-right:auto; display: block; margin-bottom: 8px; display: flex; flex-direction: column; flex-grow: 1;" src="/images/every-rc-exe-bug-quirk-probably/versioninfo-broken.png">
+<img style="margin-left:auto; margin-right:auto; display: block; margin-bottom: 8px; display: flex; flex-direction: column; flex-grow: 1; max-width: 100%;" src="/images/every-rc-exe-bug-quirk-probably/versioninfo-broken.png">
 <i class="caption">...but completely broken if the commas are omitted</i>
 </div>
 </div>
