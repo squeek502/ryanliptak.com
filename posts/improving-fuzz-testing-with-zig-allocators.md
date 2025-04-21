@@ -94,7 +94,7 @@ var metadata = try audiometa.metadata.readAll(max_size_allocator.allocator(), &s
 defer metadata.deinit();
 ```
 
-As you can see by the `std.math.max(4096, data.len * 10)`, this ended up needing more leeway than I initially thought it would, since it's possible for my particular library to need larger-than-filesize allocations for the storage of the parsed metadata, but it ended up allowing me to iron out all such bugs and greatly improve the worst-cast performance of the library. Afterwards, the fuzzer was able to run consistently above 6000 inputs/sec on my machine, without hitting any timeouts at all.
+As you can see by the `std.math.max(4096, data.len * 10)`, this ended up needing more leeway than I initially thought it would, since it's possible for my particular library to need larger-than-filesize allocations for the storage of the parsed metadata, but it ended up allowing me to iron out all such bugs and greatly improve the worst-case performance of the library. Afterwards, the fuzzer was able to run consistently above 6000 inputs/sec on my machine, without hitting any timeouts at all.
 
 ## Fuzzing to find memory bugs after allocation failure
 
