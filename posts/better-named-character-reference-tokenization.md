@@ -235,12 +235,17 @@ Each end of word is a distinct node, so we can either:
 
 ### Representing a trie in memory
 
+<p><aside class="note">
+
+Note: The code examples in this section will be using [Zig](https://www.ziglang.org/) syntax.	
+
+</aside></p>
+
 `GG`, `GL`, `HF`
 
 ```zig
 const Node = struct {
 	// This example supports all `u8` byte values.
-	// Could be reduced to the size of the alphabet used by the set of words.
 	children: [256]?*Node,
 	end_of_word: bool,
 };
@@ -266,19 +271,20 @@ const Node = struct {
 ```zig
 const Node = struct {
 	char: u8,
-	// Can represent this with the minimum number of bits
+	// Can represent this with the minimum number of bits,
+	// indexes 0-5 can be represented in 3 bits.
 	first_child_index: u3,
-	last_child: bool,
+	last_sibling: bool,
 	end_of_word: bool,
 };
 
 const nodes = [6]Node{
-    .{ .first_child_index = 1,  .char = 0,   .last_child = true,  .end_of_word = false },
-    .{ .first_child_index = 3,  .char = 'G', .last_child = false, .end_of_word = false },
-    .{ .first_child_index = 5,  .char = 'H', .last_child = true,  .end_of_word = false },
-    .{ .first_child_index = 0,  .char = 'G', .last_child = false, .end_of_word = true  },
-    .{ .first_child_index = 0,  .char = 'L', .last_child = true,  .end_of_word = true  },
-    .{ .first_child_index = 0,  .char = 'F', .last_child = true,  .end_of_word = true  },
+    .{ .first_child_index = 1, .char = 0,   .last_sibling = true,  .end_of_word = false },
+    .{ .first_child_index = 3, .char = 'G', .last_sibling = false, .end_of_word = false },
+    .{ .first_child_index = 5, .char = 'H', .last_sibling = true,  .end_of_word = false },
+    .{ .first_child_index = 0, .char = 'G', .last_sibling = false, .end_of_word = true  },
+    .{ .first_child_index = 0, .char = 'L', .last_sibling = true,  .end_of_word = true  },
+    .{ .first_child_index = 0, .char = 'F', .last_sibling = true,  .end_of_word = true  },
 };
 ```
 
