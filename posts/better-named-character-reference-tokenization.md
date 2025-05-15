@@ -797,11 +797,11 @@ Here's a diagram of a possible memory layout of an array using this representati
 
 <div style="display: grid; grid-template-columns: max-content 1fr;">
 	<div>
-		<div style="height: 2rem; line-height: 2rem; text-align: right; padding: 1px 0.75rem 1px 0.75rem; background: #111;">byte index</div>
+		<div style="height: 2rem; line-height: 2rem; text-align: right; padding: 1px 0.75rem 1px 0.75rem;" class="has-bg">byte index</div>
 		<div style="height: 2rem; line-height: 2rem; margin-top: 1px;"></div>
-		<div style="height: 2rem; line-height: 2rem; text-align: right; padding: 1px 0.75rem 1px 0.75rem; margin-top: 1px; background: #111;">element index</div>
+		<div style="height: 2rem; line-height: 2rem; text-align: right; padding: 1px 0.75rem 1px 0.75rem; margin-top: 1px;" class="has-bg">element index</div>
 	</div>
-	<div class="regular-array">
+	<div class="array-bits regular-array has-bg">
 		<div class="byte-indexes">
 			<span>0</span>
 			<span>1</span>
@@ -843,7 +843,6 @@ Here's a diagram of a possible memory layout of an array using this representati
 			border: 1px solid #777;
 			height: 2rem;
 			line-height: 2rem;
-			background: #111;
 		}
 		.regular-array .array-indexes > span > span {
 			width: 25%; text-align: center; display: inline-block;
@@ -857,7 +856,35 @@ Here's a diagram of a possible memory layout of an array using this representati
 		.regular-array .element {
 			display: grid; grid-template-columns: 53.125% 12.5% 34.375%;
 		}
-		.regular-array .element .first, .first-element-key {
+		.array-bits .element .first, .first-element-key {
+			background: repeating-linear-gradient(
+				-45deg,
+				#C08EE7,
+				#C08EE7 10px,
+				#D7C7EF 10px,
+				#D7C7EF 20px
+			);
+		}
+		.array-bits .element .second, .second-element-key {
+			background: repeating-linear-gradient(
+				-45deg,
+				#7DAFE7,
+				#7DAFE7 10px,
+				#B9D5F7 10px,
+				#B9D5F7 20px
+			);
+		}
+		.array-bits .element .padding, .padding-element-key {
+			background: repeating-linear-gradient(
+				-45deg,
+				#BBB,
+				#BBB 10px,
+				#DDD 10px,
+				#DDD 20px
+			);
+		}
+@media (prefers-color-scheme: dark) {
+		.array-bits .element .first, .first-element-key {
 			background: repeating-linear-gradient(
 				-45deg,
 				#613583,
@@ -866,7 +893,7 @@ Here's a diagram of a possible memory layout of an array using this representati
 				#251134 20px
 			);
 		}
-		.regular-array .element .second, .second-element-key {
+		.array-bits .element .second, .second-element-key {
 			background: repeating-linear-gradient(
 				-45deg,
 				#142A43,
@@ -875,7 +902,7 @@ Here's a diagram of a possible memory layout of an array using this representati
 				#1A5FB4 20px
 			);
 		}
-		.regular-array .element .padding, .padding-element-key {
+		.array-bits .element .padding, .padding-element-key {
 			background: repeating-linear-gradient(
 				-45deg,
 				#222,
@@ -884,6 +911,7 @@ Here's a diagram of a possible memory layout of an array using this representati
 				#333 20px
 			);
 		}
+}
 		</style>
 	</div>
 </div>
@@ -892,11 +920,11 @@ However, while using 21 bits to represent the mapped code point(s) does not auto
 
 <div style="display: grid; grid-template-columns: max-content 1fr;">
 	<div>
-		<div style="height: 2rem; line-height: 2rem; text-align: right; padding: 1px 0.75rem 1px 0.75rem; background: #111;">byte index</div>
+		<div style="height: 2rem; line-height: 2rem; text-align: right; padding: 1px 0.75rem 1px 0.75rem;" class="has-bg">byte index</div>
 		<div style="height: 2rem; line-height: 2rem; margin-top: 1px;"></div>
-		<div style="height: 2rem; line-height: 2rem; text-align: right; padding: 1px 0.75rem 1px 0.75rem; margin-top: 1px; background: #111;">element index</div>
+		<div style="height: 2rem; line-height: 2rem; text-align: right; padding: 1px 0.75rem 1px 0.75rem; margin-top: 1px;" class="has-bg">element index</div>
 	</div>
-	<div class="bitpacked-array">
+	<div class="array-bits bitpacked-array has-bg">
 	<div class="byte-indexes">
 		<span>0</span>
 		<span>1</span>
@@ -944,7 +972,6 @@ However, while using 21 bits to represent the mapped code point(s) does not auto
 		border: 1px solid #777;
 		height: 2rem;
 		line-height: 2rem;
-		background: #111;
 	}
 	.bitpacked-array .array-indexes > span > span {
 		width: 25%; text-align: center; display: inline-block;
@@ -964,42 +991,15 @@ However, while using 21 bits to represent the mapped code point(s) does not auto
 	.bitpacked-array .trailing {
 		border-right: 0 !important;
 	}
-	.bitpacked-array .element .first {
-		background: repeating-linear-gradient(
-			-45deg,
-			#613583,
-			#613583 10px,
-			#251134 10px,
-			#251134 20px
-		);
-	}
-	.bitpacked-array .element .second {
-		background: repeating-linear-gradient(
-			-45deg,
-			#142A43,
-			#142A43 10px,
-			#1A5FB4 10px,
-			#1A5FB4 20px
-		);
-	}
-	.bitpacked-array .element .padding {
-		background: repeating-linear-gradient(
-			-45deg,
-			#222,
-			#222 10px,
-			#333 10px,
-			#333 20px
-		);
-	}
 	</style>
 	</div>
 </div>
 
-You'll notice that no elements past the first start or end on byte boundaries, meaning in order to load an element, a fair bit of bitwise operations are required (bit shifting, etc). This makes array accesses more expensive, but that actually isn't a big deal for our use case, since we only ever access the array of values once per named character reference, and only after we're certain we have a match. So, tighly bitpacking the value array is a viable way to save some extra bytes for our purposes.
+You'll notice that no elements past the first start or end on byte boundaries, meaning in order to load an element, a fair bit of bitwise operations are required (bit shifting, etc). This makes array accesses more expensive, but that actually isn't a big deal for our use case, since we only ever access the array of values once per named character reference, and only after we're certain we have a match. So, tightly bitpacking the value array is a viable way to save some extra bytes for our purposes.
 
 <p><aside class="note">
 
-Note: This is just context for the next section where I'll mention data sizes for versions that use the "regular array" representation or the "tighly bitpacked array" representation for the values.
+Note: This is just context for the next section where I'll mention data sizes for versions that use the "regular array" representation or the "tightly bitpacked array" representation for the values.
 
 </aside></p>
 
@@ -1057,7 +1057,15 @@ Ultimately, the data size of the trie is going to be at least **2x larger** than
 
 ### Performance
 
-The DAFSA implementation uses more instructions than the trie implementation because it needs to build up the unique index during iteration, but the DAFSA saves on cache misses (presumably due to the smaller overall size of the DAFSA and its node re-use) and everything just about evens out in terms of wall clock time:
+Luckily, there's [an existing HTML parser implementation written in Zig called `rem`](https://github.com/chadwain/rem) that uses a trie for its named character reference tokenization, so getting [some relevant benchmark results using some actual HTML parsing](https://github.com/chadwain/rem/pull/15) was pretty easy.
+
+<p><aside class="note">
+
+Note: The trie in `rem` uses the 'flattened' representation of a trie, with a value array that re-uses the index of the end-of-word node (so there are a lot of empty slots in the value array).
+
+</aside></p>
+
+I turns out that the DAFSA implementation uses more instructions than the trie implementation because it needs to do extra work to build up the unique index during iteration, but the DAFSA saves on cache misses (presumably due to the smaller overall size of the DAFSA and its node re-use) and everything just about evens out in terms of wall clock time:
 
 ```poopresults
 Benchmark 1 (449 runs): ./trie
@@ -1118,6 +1126,18 @@ For the use-case of named character references, using a DAFSA instead of a trie 
 
 ## The Ladybird implementation
 
+TODO: Talk about how Ladybird handled things before (startsWith, mishandling insertion points)
+
+The data structure used for the Ladybird implementation is the DAFSA as described so far, but the value array is not bitpacked, because:
+
+- I'm not very familiar with how to approach that in C++
+- Using an `enum` for the second code point would either mean using an extra bit (since enums are signed integers in C++) or using some workaround to keep it using the minimal number of bits
+- It only saves 3,067 bytes and doesn't affect performance, so complicating the implementation for that didn't seem worth it
+
+TODO: Describe `NamedCharacterReferenceMatcher`
+
+Ladybird follows ['spec-driven development'](https://youtu.be/9YM7pDMLvr4?t=1608), meaning that its code is implemented to match the text of the relevant specification as closely as possible, and the tokenizer is no exception. Here's what the named character reference specification looks like:
+
 > **13.2.5.73 Named character reference state**
 >
 > Consume the maximum number of characters possible, where the consumed characters are one of the identifiers in the first column of the named character references table. Append each character to the temporary buffer when it's consumed.
@@ -1127,6 +1147,8 @@ For the use-case of named character references, using a DAFSA instead of a trie 
 > 
 > - Otherwise
 >     + Flush code points consumed as a character reference. Switch to the ambiguous ampersand state.
+
+And here's what the Ladybird implementation looks like (slightly simplified for clarity; [here's the full implementation](https://github.com/LadybirdBrowser/ladybird/blob/27ba216e3fd869e0a3bf1d78c3693e5c7993369c/Libraries/LibWeb/HTML/Parser/HTMLTokenizer.cpp#L1696-L1747))
 
 ```c
 BEGIN_STATE(NamedCharacterReference)
