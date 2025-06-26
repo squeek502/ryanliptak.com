@@ -4,4 +4,5 @@ return {
   description = "Fuzz testing decades-old software can turn up some curious behaviors",
   keywords = "zig, win32, fuzzing",
   categories = {"Programming", "Fuzzing"},
+  featured = true,
 }

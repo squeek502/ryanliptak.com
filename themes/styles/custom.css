@@ -93,6 +93,13 @@ h1, h2, h3, h4, h5, h6 {
 .blog-post h2, .blog-post h3, .blog-post h4, .blog-post h5, .blog-post h6 {
   border-bottom: 1px solid rgba(0,0,0,.25);
 }
+.blog-post h6 {
+  font-size: 90%;
+  margin-bottom: 1em;
+  margin-top: 1em;
+  border-bottom: 0;
+  font-weight: bold;
+}
 .blog-post > .subtitle {
   font-style: italic;
 }
@@ -103,7 +110,7 @@ header { margin-top: 15px; }
 .header-menu { list-style: none; padding:0; margin:0; display: inline-block; }
 .header-menu > li { display: inline-block; margin-right: 10px; }
 
-.note, aside.update, aside.warning {
+.note, aside.update, aside.warning, aside.important {
   border-left: .25rem solid;
   border-right: .25rem solid;
   background-color: #f4f4f4;
@@ -405,6 +412,66 @@ pre {
   cursor: help;
 }
 
+.token_semigood {
+  color: #937C04;
+}
+
+@media (prefers-color-scheme: dark) {
+  .token_semigood {
+    color: #C1A015;
+  }
+}
+
+/* poop-specific tokens */
+
+.language-poopresults {
+  font-size: 0.8em;
+}
+
+.language-poopresults .token_mean {
+  color: #2B5E06FF;
+}
+.language-poopresults .token_stddev,
+.language-poopresults .token_better {
+  color: #567D16FF;
+}
+.language-poopresults .token_min {
+  color: #325F80FF;
+}
+.language-poopresults .token_max {
+  color: #4A3F77FF;
+}
+.language-poopresults .token_outliers {
+  color: #A57D1CFF;
+}
+.language-poopresults .token_worse {
+  color: #A51D2DFF;
+}
+
+@media (prefers-color-scheme: dark) {
+
+.language-poopresults .token_mean {
+  color: #608D3FFF;
+}
+.language-poopresults .token_stddev,
+.language-poopresults .token_better {
+  color: #6F903AFF;
+}
+.language-poopresults .token_min {
+  color: #51728BFF;
+}
+.language-poopresults .token_max {
+  color: #5D5384FF;
+}
+.language-poopresults .token_outliers {
+  color: #A78A45FF;
+}
+.language-poopresults .token_worse {
+  color: #AD1E2EFF;
+}
+
+}
+
 @media (prefers-color-scheme: dark) {
   body {
     background: #191919;
@@ -445,7 +512,7 @@ pre {
   .blog-post h2, .blog-post h3, .blog-post h4, .blog-post h5, .blog-post h6 {
     border-color: rgba(255,255,255,0.25);
   }
-  aside.update, .note, aside.warning {
+  aside.update, .note, aside.warning, aside.important {
     background-color: #222;
   }
   .note {
