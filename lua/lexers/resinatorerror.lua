@@ -4,7 +4,7 @@ local lexer = require('lexers.lexer')
 local token, word_match = lexer.token, lexer.word_match
 local P, R, S = lpeg.P, lpeg.R, lpeg.S
 
-local lex = lexer.new('zigstacktrace', {lex_by_line = true})
+local lex = lexer.new('resinatorerror', {lex_by_line = true})
 
 lex:add_rule('selector', token('selector', S('\t ')^0 * P("~")^0 * P("^") * P("~")^0 * lexer.newline))
 
