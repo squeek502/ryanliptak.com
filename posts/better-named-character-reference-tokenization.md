@@ -429,7 +429,7 @@ Note that the instruction counts are roughly the same between the 'friendly' and
 
 #### Takeaways
 
-When using a DAFSA for this particular task, we're trading off a ~20% difference in lookup speed for 2-3 orders of magnitude difference in data size. This seems pretty okay, especially for what we're ultimately interested in implementing: a fully static and unchanging data structure, so there's no need to worry about how easy it is to modify after construction.
+When using the 'flattened' representation for this particular task, we're trading off a ~20% difference in lookup speed for 2-3 orders of magnitude difference in data size. This seems pretty okay, especially for what we're ultimately interested in implementing: a fully static and unchanging data structure, so there's no need to worry about how easy it is to modify after construction.
 
 <p><aside class="note">
 
@@ -2814,7 +2814,7 @@ The Safari implementation uses the same four arrays, but [has made a few more da
 - `kStaticEntityStringStorage` does not include semicolons, and instead that information was moved to a boolean flag within the elements of the `kStaticEntityTable` array. This brings down the total bytes used by this array to 11,127 (-3,358 compared to the Chrome version)
 - The `HTMLEntityTableEntry` struct (used in the `kStaticEntityTable` array) was converted to [use a bitfield](https://github.com/WebKit/WebKit/blob/bde3bff51de25b231de2b22517438a911e2e8e3a/Source/WebCore/html/parser/HTMLEntityTable.h#L34-L43) to reduce the size of the struct from 12 bytes to 8 bytes (57 bits). However, Clang seems to insert padding bits into the `struct` which brings it back up to 12 bytes anyway (it wants to align the `optionalSecondCharacter` and `nameLengthExcludingSemicolon` fields). So, this data size optimization may or may not actually have an effect (I'm not very familiar with the rules around C++ bitfield padding, so I feel like I can't say anything definitive). If the size *is* reduced to 8 bytes, then `kStaticEntityTable` uses 8,924 less bytes (17,798 instead of 26,722).
 
-So, the Safari implementation uses either 30,040 bytes (<span class="token_addition">29.34 KiB</span>) if `HTMLEntityTableEntry` uses 12 bytes or 21,116 bytes (<span class="token_addition">20.62 KiB</span>) if `HTMLEntityTableEntry` uses 8 bytes. This means that Safari's data size optimizations (or at least their intended effect) makes its data size *smaller* than Ladybird's (even if the Ladybird implementation tightly bitpacked its values array, it'd still use 229 bytes more than the 8-byte-`HTMLEntityTableEntry` Safari version). This also shows that the larger data size of the Chrome implementation is not inherent to the approach that it uses.
+So, the Safari implementation uses either 30,040 bytes (<span class="token_addition">29.34 KiB</span>) if `HTMLEntityTableEntry` uses 12 bytes, or 21,116 bytes (<span class="token_addition">20.62 KiB</span>) if `HTMLEntityTableEntry` uses 8 bytes. This means that Safari's data size optimizations (or at least their intended effect) makes its data size *smaller* than Ladybird's (even if the Ladybird implementation tightly bitpacked its values array, it'd still use 229 bytes more than the 8-byte-`HTMLEntityTableEntry` Safari version). This also shows that the larger data size of the Chrome implementation is not inherent to the approach that it uses.
 
 #### Ease-of-use
 
