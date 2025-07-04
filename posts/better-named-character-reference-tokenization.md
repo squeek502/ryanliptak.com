@@ -2673,6 +2673,122 @@ Note: I'll double check that the Safari implementation has the same performance 
 
 </aside></p>
 
+<p><aside class="update">
+
+Update: My testing confirms that Safari has roughly the same performance characteristics as Chrome.
+
+<details class="box-border" style="padding: 1em; margin-bottom: 1em;">
+<summary>Benchmark results for Blink (Chrome) vs WebKit (Safari)</summary>
+
+```poopresults
+Benchmark 1 (87 runs): ./BenchHTMLTokenizer blink
+  measurement          mean ± σ            min … max           outliers         delta
+  wall_time           115ms ±  976us     113ms …  117ms          0 ( 0%)        0%
+  peak_rss           83.2MB ±  104KB    82.8MB … 83.4MB         36 (41%)        0%
+  cpu_cycles          233M  ± 1.30M      230M  …  237M           0 ( 0%)        0%
+  instructions        463M  ± 8.80K      463M  …  463M           6 ( 7%)        0%
+  cache_references   10.1M  ±  229K     9.92M  … 12.1M           2 ( 2%)        0%
+  cache_misses        416K  ± 7.92K      404K  …  437K           0 ( 0%)        0%
+  branch_misses       817K  ± 2.24K      813K  …  823K           0 ( 0%)        0%
+Benchmark 2 (87 runs): ./BenchHTMLTokenizer webkit
+  measurement          mean ± σ            min … max           outliers         delta
+  wall_time           116ms ±  981us     114ms …  118ms          0 ( 0%)          +  1.0% ±  0.3%
+  peak_rss           83.3MB ± 93.6KB    83.0MB … 83.5MB          0 ( 0%)          +  0.1% ±  0.0%
+  cpu_cycles          237M  ± 1.15M      235M  …  241M           0 ( 0%)        💩+  1.9% ±  0.2%
+  instructions        480M  ± 8.05K      480M  …  480M           4 ( 5%)        💩+  3.6% ±  0.0%
+  cache_references   10.4M  ±  401K     10.1M  … 12.7M           5 ( 6%)        💩+  3.1% ±  1.0%
+  cache_misses        413K  ± 7.06K      399K  …  428K           0 ( 0%)          -  0.8% ±  0.5%
+  branch_misses       829K  ± 1.64K      825K  …  834K           3 ( 3%)        💩+  1.4% ±  0.1%
+```
+
+```poopresults
+Benchmark 1 (203 runs): ./BenchHTMLTokenizer blink gecko-worst-case
+  measurement          mean ± σ            min … max           outliers         delta
+  wall_time          49.1ms ±  889us    47.2ms … 53.2ms         17 ( 8%)        0%
+  peak_rss           52.9MB ± 74.9KB    52.7MB … 53.1MB          0 ( 0%)        0%
+  cpu_cycles          131M  ±  899K      130M  …  140M           1 ( 0%)        0%
+  instructions        292M  ± 11.5K      292M  …  292M           6 ( 3%)        0%
+  cache_references   3.29M  ±  140K     3.21M  … 4.90M          12 ( 6%)        0%
+  cache_misses        359K  ± 6.65K      344K  …  400K          10 ( 5%)        0%
+  branch_misses       245K  ± 1.72K      241K  …  259K           4 ( 2%)        0%
+Benchmark 2 (204 runs): ./BenchHTMLTokenizer webkit gecko-worst-case
+  measurement          mean ± σ            min … max           outliers         delta
+  wall_time          49.0ms ±  861us    47.1ms … 50.6ms          0 ( 0%)          -  0.2% ±  0.3%
+  peak_rss           53.0MB ± 85.1KB    52.7MB … 53.1MB          3 ( 1%)          +  0.1% ±  0.0%
+  cpu_cycles          131M  ±  680K      129M  …  134M           3 ( 1%)          -  0.2% ±  0.1%
+  instructions        303M  ± 5.20K      303M  …  303M           2 ( 1%)        💩+  3.6% ±  0.0%
+  cache_references   3.34M  ±  118K     3.24M  … 4.82M          10 ( 5%)          +  1.6% ±  0.8%
+  cache_misses        357K  ± 5.20K      346K  …  377K           5 ( 2%)          -  0.4% ±  0.3%
+  branch_misses       284K  ± 6.23K      275K  …  308K           6 ( 3%)        💩+ 15.8% ±  0.4%
+```
+
+```poopresults
+Benchmark 1 (159 runs): ./BenchHTMLTokenizer blink ladybird-worst-case
+  measurement          mean ± σ            min … max           outliers         delta
+  wall_time          62.9ms ±  933us    59.9ms … 64.3ms          0 ( 0%)        0%
+  peak_rss           65.0MB ± 74.1KB    64.8MB … 65.2MB         51 (32%)        0%
+  cpu_cycles          110M  ±  631K      109M  …  112M           0 ( 0%)        0%
+  instructions        204M  ± 8.54K      203M  …  204M           8 ( 5%)        0%
+  cache_references   5.97M  ± 45.8K     5.87M  … 6.17M           3 ( 2%)        0%
+  cache_misses        376K  ± 4.71K      366K  …  391K           2 ( 1%)        0%
+  branch_misses       227K  ± 1.42K      223K  …  232K           4 ( 3%)        0%
+Benchmark 2 (159 runs): ./BenchHTMLTokenizer webkit ladybird-worst-case
+  measurement          mean ± σ            min … max           outliers         delta
+  wall_time          62.9ms ±  972us    60.6ms … 64.7ms          0 ( 0%)          -  0.0% ±  0.3%
+  peak_rss           65.1MB ± 85.3KB    64.8MB … 65.2MB          3 ( 2%)          +  0.1% ±  0.0%
+  cpu_cycles          112M  ±  500K      111M  …  113M           0 ( 0%)          +  1.1% ±  0.1%
+  instructions        208M  ± 8.69K      208M  …  208M          10 ( 6%)        💩+  2.3% ±  0.0%
+  cache_references   6.03M  ± 64.8K     5.90M  … 6.31M           4 ( 3%)          +  1.0% ±  0.2%
+  cache_misses        379K  ± 6.07K      369K  …  400K           3 ( 2%)          +  0.7% ±  0.3%
+  branch_misses       228K  ± 1.28K      224K  …  232K          10 ( 6%)          +  0.2% ±  0.1%
+```
+
+```poopresults
+Benchmark 1 (219 runs): ./BenchHTMLTokenizer blink all-valid
+  measurement          mean ± σ            min … max           outliers         delta
+  wall_time          45.7ms ±  907us    43.4ms … 48.4ms         12 ( 5%)        0%
+  peak_rss           54.3MB ± 88.3KB    54.0MB … 54.4MB         92 (42%)        0%
+  cpu_cycles          111M  ±  608K      109M  …  112M           0 ( 0%)        0%
+  instructions        205M  ± 8.81K      205M  …  205M          11 ( 5%)        0%
+  cache_references   3.79M  ±  102K     3.65M  … 4.60M          18 ( 8%)        0%
+  cache_misses        362K  ± 9.48K      347K  …  400K           5 ( 2%)        0%
+  branch_misses       523K  ± 1.71K      519K  …  530K           2 ( 1%)        0%
+Benchmark 2 (217 runs): ./BenchHTMLTokenizer webkit all-valid
+  measurement          mean ± σ            min … max           outliers         delta
+  wall_time          46.2ms ±  802us    44.1ms … 48.9ms         31 (14%)          +  1.1% ±  0.4%
+  peak_rss           54.3MB ± 84.0KB    54.0MB … 54.5MB          1 ( 0%)          +  0.1% ±  0.0%
+  cpu_cycles          114M  ±  729K      112M  …  118M           9 ( 4%)        💩+  2.5% ±  0.1%
+  instructions        219M  ± 7.63K      219M  …  219M           5 ( 2%)        💩+  6.7% ±  0.0%
+  cache_references   3.80M  ± 87.3K     3.70M  … 4.60M          15 ( 7%)          +  0.4% ±  0.5%
+  cache_misses        359K  ± 7.84K      348K  …  423K          16 ( 7%)          -  0.8% ±  0.5%
+  branch_misses       545K  ± 2.60K      541K  …  575K           6 ( 3%)        💩+  4.1% ±  0.1%
+```
+
+```poopresults
+Benchmark 1 (35 runs): ./BenchMatcher blink
+  measurement          mean ± σ            min … max           outliers         delta
+  wall_time           146ms ± 1.46ms     143ms …  148ms          0 ( 0%)        0%
+  peak_rss           4.67MB ± 64.3KB    4.59MB … 4.72MB          0 ( 0%)        0%
+  cpu_cycles          596M  ± 1.71M      593M  …  600M           0 ( 0%)        0%
+  instructions       1.11G  ± 80.2      1.11G  … 1.11G           0 ( 0%)        0%
+  cache_references   12.4M  ±  237K     11.3M  … 13.0M           2 ( 6%)        0%
+  cache_misses       32.4K  ± 7.95K     22.1K  … 59.5K           1 ( 3%)        0%
+  branch_misses      8.64M  ± 17.5K     8.61M  … 8.68M           0 ( 0%)        0%
+Benchmark 2 (32 runs): ./BenchMatcher webkit
+  measurement          mean ± σ            min … max           outliers         delta
+  wall_time           160ms ± 1.52ms     158ms …  163ms          0 ( 0%)        💩+  9.9% ±  0.5%
+  peak_rss           4.64MB ± 74.0KB    4.46MB … 4.72MB          0 ( 0%)          -  0.5% ±  0.7%
+  cpu_cycles          659M  ± 3.31M      655M  …  665M           0 ( 0%)        💩+ 10.5% ±  0.2%
+  instructions       1.37G  ± 74.9      1.37G  … 1.37G           0 ( 0%)        💩+ 22.9% ±  0.0%
+  cache_references   13.0M  ± 97.0K     12.8M  … 13.3M           1 ( 3%)        💩+  4.3% ±  0.7%
+  cache_misses       22.1K  ±  710      21.3K  … 24.0K           0 ( 0%)        ⚡- 31.8% ±  8.7%
+  branch_misses      8.75M  ± 7.25K     8.74M  … 8.77M           0 ( 0%)        💩+  1.3% ±  0.1%
+```
+
+</details>
+
+</aside></p>
+
 Like Firefox, the Chrome/Safari named character reference tokenization does not use a trie. For the 'matching' portion, the Chrome/Safari implementation is actually quite similar in concept to the Firefox implementation:
 
 - Use the first character to lookup the initial range of possible matches within a sorted array of all named character references [[src](https://github.com/chromium/chromium/blob/f7116e9d191f673257ca706d3bc998dd468ab79f/third_party/blink/renderer/core/html/parser/html_entity_search.cc#L37-L38)]
@@ -2813,6 +2929,12 @@ The Safari implementation uses the same four arrays, but [has made a few more da
 
 - `kStaticEntityStringStorage` does not include semicolons, and instead that information was moved to a boolean flag within the elements of the `kStaticEntityTable` array. This brings down the total bytes used by this array to 11,127 (-3,358 compared to the Chrome version)
 - The `HTMLEntityTableEntry` struct (used in the `kStaticEntityTable` array) was converted to [use a bitfield](https://github.com/WebKit/WebKit/blob/bde3bff51de25b231de2b22517438a911e2e8e3a/Source/WebCore/html/parser/HTMLEntityTable.h#L34-L43) to reduce the size of the struct from 12 bytes to 8 bytes (57 bits). However, Clang seems to insert padding bits into the `struct` which brings it back up to 12 bytes anyway (it wants to align the `optionalSecondCharacter` and `nameLengthExcludingSemicolon` fields). So, this data size optimization may or may not actually have an effect (I'm not very familiar with the rules around C++ bitfield padding, so I feel like I can't say anything definitive). If the size *is* reduced to 8 bytes, then `kStaticEntityTable` uses 8,924 less bytes (17,798 instead of 26,722).
+
+<p><aside class="update">
+
+Update: Confirmed that Safari's `HTMLEntityTableEntry` is 12 bytes wide instead of the intended 8 bytes. The bug has been reported [here](https://bugs.webkit.org/show_bug.cgi?id=295171).
+
+</aside></p>
 
 So, the Safari implementation uses either 30,040 bytes (<span class="token_addition">29.34 KiB</span>) if `HTMLEntityTableEntry` uses 12 bytes, or 21,116 bytes (<span class="token_addition">20.62 KiB</span>) if `HTMLEntityTableEntry` uses 8 bytes. This means that Safari's data size optimizations (or at least their intended effect) makes its data size *smaller* than Ladybird's (even if the Ladybird implementation tightly bitpacked its values array, it'd still use 229 bytes more than the 8-byte-`HTMLEntityTableEntry` Safari version). This also shows that the larger data size of the Chrome implementation is not inherent to the approach that it uses.
 
