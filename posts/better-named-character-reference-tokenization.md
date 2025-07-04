@@ -2864,7 +2864,7 @@ The downside of the Chrome implementation in particular is actually a choice tha
 - `&n`, `&no`, `&not`, `&noti`, and `&notin`, each resulting in the 'not enough characters' flag being set
 - Finally, `&notin;` will be matched fully (the semicolon acts as a definitive delimiter)
 
-In theory, the redundant work that's performed in these sorts of scenarios should have a noticeable affect on performance, but, in practice, I wasn't able to prove that out with benchmarking.
+In theory, the redundant work that's performed in these sorts of scenarios should have a noticeable effect on performance, but, in practice, I wasn't able to prove that out with benchmarking.
 
 <details class="box-border" style="padding: 1em;">
 <summary>Details and results of my benchmarking</summary>
