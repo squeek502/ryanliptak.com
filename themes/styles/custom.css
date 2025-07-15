@@ -104,7 +104,19 @@ h1, h2, h3, h4, h5, h6 {
   font-style: italic;
 }
 
-.post-feedback { font-style: italic; margin-top: 2rem; }
+.post-footer {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  margin-top: 1.5rem;
+}
+.post-feedback { font-style: italic; margin-top: 0.5rem; display: flex; align-items: center; }
+.post-support { font-style: italic; margin-top: 0.5rem; display: flex; align-items: center; }
+
+@media (max-width: 600px) {
+  .post-footer {
+    grid-template-columns: 1fr !important;
+  }
+}
 
 header { margin-top: 15px; }
 .header-menu { list-style: none; padding:0; margin:0; display: inline-block; }
