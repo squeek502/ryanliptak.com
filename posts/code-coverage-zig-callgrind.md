@@ -1,10 +1,10 @@
-<p><aside class="note">Note: Most of this is recounting the process by which I arrived at being able to generate code coverage information for Zig code. If you just want to see the end result, check out the <a href="https://github.com/squeek502/grindcov">grindcov repository</a>.</aside></p>
+<aside class="note">Note: Most of this is recounting the process by which I arrived at being able to generate code coverage information for Zig code. If you just want to see the end result, check out the <a href="https://github.com/squeek502/grindcov">grindcov repository</a>.</aside>
 
-<p><aside class="update">
+<aside class="update">
 
 **Update 2021-09-13:** Since writing this post, I was made aware of [kcov](https://github.com/SimonKagstrom/kcov) which is a more robust and *much* faster tool that can generate coverage information for Zig binaries. I've written a [follow-up post that describes more generally how coverage tools like kcov can be used with Zig on zig.news](https://zig.news/squeek502/code-coverage-for-zig-1dk1).
 
-</aside></p>
+</aside>
 
 ---
 
@@ -51,11 +51,11 @@ $ c_coverage_report.py --pattern=. --format=text callgrind.out.97155
 !     }
 ! }
 ```
-<p><aside class="note">
+<aside class="note">
 
 Note: This coverage information might look slightly strange but it *is* correct--the `if` statement isn't executed because it does not make it into the compiled binary (the condition is known at compile-time so it's elided)
 
-</aside></p>
+</aside>
 
 ## The Next Problem
 
@@ -93,13 +93,13 @@ $ zig build test --verbose
 All 1 tests passed.
 ```
 
-<p><aside class="note">
+<aside class="note">
 
 Note: In this example, there's not much difference in the command from `zig build test --verbose` and the regular `zig test` usage above--it's just more explicit. With a more complicated `build.zig`, though (linking other libraries, adding packages, etc), this command can vary significantly from a naive `zig test` call.
 
 Also, this `--verbose` method is not the only way of doing this. Instead, the Zig command-line options `--test-cmd` and `--test-cmd-bin` can be used to make the coverage data generator be the 'text executor'. This is detailed later in this post.
 
-</aside></p>
+</aside>
 
 ## Automating Things
 
@@ -168,13 +168,13 @@ zig test file.zig --test-cmd grindcov --test-cmd -- --test-cmd-bin
 
 will end up running something like `grindcov -- zig-cache/path/to/test zig` for you.
 
-<p><aside class="note">
+<aside class="note">
 
 `--test-cmd-bin` is necessary to tell zig to append the test binary path to the executor's arguments
 
 `--test-cmd --` is specified so that grindcov gets the `--` argument before the command to execute, just to ensure that the command and its args are not parsed as flags/options to `grindcov`
 
-</aside></p>
+</aside>
 
 This also allows for easy integration with `build.zig`. Here's one possible implementation:
 
@@ -240,13 +240,13 @@ main.zig                             6           7                85.71%
 Total                                6           7                85.71%
 ```
 
-<p><aside class="note">
+<aside class="note">
 
 Note: There's a big caveat here with the results from Zig binaries: since the Zig compiler only compiles functions that are actually called/referenced, completely unused functions don't contribute to the 'executable lines' total. Because of this, a file with one used function and many unused functions could potentially show up as 100% covered.
 
 In other words, the results are only indicative of the coverage of *used* functions.
 
-</aside></p>
+</aside>
 
 ## Further Room For Improvement
 

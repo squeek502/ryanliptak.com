@@ -104,11 +104,11 @@ This means that it is slightly harder to 'escape' a slope once the movement code
 
 Everything above is the same in the Source engine, however, the miniature 'snap the player onto the ramp if they're close enough to it' functionality was substantially upgraded: instead of just checking 2 units below the player, it now checks for slopes up to 18 units below the player (technically, the distance it checks is determined by `StepSize`, but `StepSize` is typically set to 18). This is done during a new function called [`StayOnGround`](https://github.com/ValveSoftware/source-sdk-2013/blob/0d8dceea4310fde5706b3ce1c70609d72a38efdf/sp/src/game/shared/gamemovement.cpp#L1856-L1890) which is run during `WalkMove` (which is only called when the player is on the ground).
 
-<p><aside class="note">
+<aside class="note">
 
 Note: `StepSize` is the height that you are allowed to step up if you hit an obstacle (to allow for walking up stairs). It is controlled by `sv_stepsize` and is defaulted to `18` in both the Source and GoldSrc engines.
 
-</aside></p>
+</aside>
 
 <div style="text-align: center;">
 	<div id="clipvelocity-stayonground-source" class="rampsliding-diagram bouncing">
@@ -139,11 +139,11 @@ So, what determines how long each 'tick' is? Well, this differs per engine:
 - In the GoldSrc engine, movement physics are run on each *client frame*, meaning the client's frames per second determine how long each movement tick is, and therefore how much or little movement happens per tick. This means that setting `fps_max` to something like `10` will make you bounce down almost any slope at almost any speed, but setting `fps_max` to `300` will make you smoothly run down almost any slope and you will only bounce when colliding with a downward slope at high speeds.
 - In the Source engine, how often movement physics are run is dictated by the `-tickrate` of the server (the client's FPS has no effect). This means that each player in a given server will have consistent movement physics, but also that different *servers* may have different movement physics depending on their `-tickrate` setting. Note, though, that it's fairly common for games on the Source engine to have a standard/enforced/recommended `-tickrate`.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: I'm not fully confident in my understanding of this tick/frame-related stuff, so don't take it as gospel. The part about FPS mattering in GoldSrc but not mattering in Source is true and can be (and was) verified experimentally, but my understanding of how everything (client frames, server networking, etc.) fits together is lacking so I may not be presenting the full picture.
 
-</aside></p>
+</aside>
 
 ## Gameplay ramifications in Fortress games
 
@@ -159,11 +159,11 @@ In the games [Team Fortress Classic](https://en.wikipedia.org/wiki/Team_Fortress
 <i class="caption">Similar techniques that exploit bouncing off a ramp at high speeds in Team Fortress Classic (GoldSrc engine) [left] and Fortress Forever (Source engine) [right]</i>
 </div>
 
-<p><aside class="note">
+<aside class="note">
 
 Note: In both of the above clips, a hand-held concussion grenade is used right before hitting the ramp which generates most of the speed that then gets transferred into the bounce.
 
-</aside></p>
+</aside>
 
 Due to the differences between the engines discussed previously, the bounce in the Team Fortress Classic clip would not have worked in Fortress Forever. The bounce in the Fortress Forever clip in this case uses two additional helping hands:
 
@@ -220,11 +220,11 @@ So, in theory, the fastest bounce would be achieved by hitting a very shallow ra
 
 Fortress Forever has a default of `-tickrate 66` (and this is what most/all servers use), so we can use that to determine specifically what speeds are necessary to achieve a bounce for a given approach and slope angle combination.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: The speedometer on the Fortress Forever HUD only shows horizontal speed, not 3D speed, but it's your 3D speed that matters for bouncing off a slope.
 
-</aside></p>
+</aside>
 
 <div style="text-align: center;">
 	<div id="clipvelocity-fortressforever" class="rampsliding-diagram bouncing">

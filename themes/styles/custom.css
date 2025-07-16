@@ -122,6 +122,9 @@ header { margin-top: 15px; }
 .header-menu { list-style: none; padding:0; margin:0; display: inline-block; }
 .header-menu > li { display: inline-block; margin-right: 10px; }
 
+aside.note, aside.update, aside.warning, aside.important {
+  margin-top: 1em; margin-bottom: 1em;
+}
 .note, aside.update, aside.warning, aside.important {
   border-left: .25rem solid;
   border-right: .25rem solid;

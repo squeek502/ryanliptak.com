@@ -1,4 +1,4 @@
-<p><aside class="update"><i>Last updated 2022-05-08</i> (<a href="https://github.com/squeek502/ryanliptak.com/commits/master/posts/improving-fuzz-testing-with-zig-allocators.md">changelog</a>)</aside></p>
+<aside class="update"><i>Last updated 2022-05-08</i> (<a href="https://github.com/squeek502/ryanliptak.com/commits/master/posts/improving-fuzz-testing-with-zig-allocators.md">changelog</a>)</aside>
 
 After [finding a method for fuzz testing Zig code](https://www.ryanliptak.com/blog/fuzzing-zig-code/) and using it to iron out some possible crashes in [an audio metadata parser](https://github.com/squeek502/audiometa) I'm writing in [Zig](https://ziglang.org/), I have been experimenting with different ways to use fuzz testing to improve my library in other dimensions.
 
@@ -132,13 +132,13 @@ My solution for the second part was to:
 
 This allows the allocation index to be both consistent *and* seemingly random, in that the allocation index will vary a lot between different inputs, so in theory we should get decent coverage fairly quickly.
 
-<p><aside class="update">
+<aside class="update">
 
 **Note:** While writing this, I realized that it would be possible to run the parser on the input once without the `FailingAllocator`, and then use the resulting 'maximum' allocation index as the upper bound for a loop where you test with a `FailingAllocator` on each possible allocation index (i.e. this would end up being similar to something like [FAINT](https://github.com/misc0110/faint/)). This would be *much* more comprehensive for each input, but would also come at a heavy runtime cost per-input. I'm not familiar enough with the inner-workings of fuzzing to know which strategy would get the best results.
 
 **Update 2021-10-29**: Turns out that Zig's parser tests [use this exact strategy already](https://github.com/ziglang/zig/blob/ee038df7e2782d336e8d7cdb8619c39d85c027bb/lib/std/zig/parser_test.zig#L5306-L5351).
 
-</aside></p>
+</aside>
 
 My fuzzer's main function ended up looking something like:
 
@@ -187,11 +187,11 @@ while (true) : (should_have_failed = true) {
 }
 ```
 
-<p><aside class="note">
+<aside class="note">
 
 **Note:** In reality, I further [(conditionally) wrapped](https://github.com/squeek502/audiometa/blob/a9f46daa31756acef58558b3d06a6b9864e3f570/test/fuzz-oom.zig#L32-L45) the `FailingAllocator` in a [custom `StackTraceOnErrorAllocator`](https://github.com/squeek502/audiometa/blob/a9f46daa31756acef58558b3d06a6b9864e3f570/test/fuzz-oom.zig#L69-L108) in order to dump a stack trace at the point of the induced `OutOfMemory` error to make it easier to debug the problems found.
 
-</aside></p>
+</aside>
 
 This ended up working well and found some bugs in my code. Here's an example of one of the bugs it was able to find:
 

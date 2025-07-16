@@ -7,11 +7,11 @@ For example, when concatenating two strings with the `+` operator (where there i
 
 Even in C, where the return of `malloc` can be checked against `NULL` to detect allocation failure, it's pretty common to see unchecked `malloc` calls in C code (and C compilers let you ignore the possibility of allocation failure without complaint).
 
-<p><aside class="note">
+<aside class="note">
 
 Note: The above is a (possibly bad) paraphrase of [the intro to this talk](https://www.youtube.com/watch?v=Z4oYSByyRak), so I recommend watching that if you'd like more detail.
 
-</aside></p>
+</aside>
 
 ## Zig and allocation failure
 
@@ -54,11 +54,11 @@ Recently, I went ahead and turned the strategy used by the Zig parser tests into
 
 ## How to use `checkAllAllocationFailures`
 
-<p><aside class="note">
+<aside class="note">
 
 Note: I've created a [repository with runnable versions of all the steps outlined in this article](https://github.com/squeek502/zig-checkAllAllocationFailures-example) if you want to follow along
 
-</aside></p>
+</aside>
 
 Here's some code that parses a newline-separated list of `key=value` pairs, e.g.
 
@@ -179,11 +179,11 @@ This still passes just fine. Now let's replace the direct `parseTest` call with 
 +     );
 ```
 
-<p><aside class="note">
+<aside class="note">
 
 Using `std.testing.allocator` as the backing allocator will also allow `checkAllAllocationFailures` to detect double frees, invalid frees, etc. that happen as a result of allocation failure. On its own (e.g. with a `FixedBufferAllocator` as the backing allocator), `checkAllAllocationFailures` will only be able to find memory leaks.
 
-</aside></p>
+</aside>
 
 Before running this, though, we'll need to make one last change to the `parseTest` function. Since `checkAllAllocationFailures` will now be calling `parseTest` multiple times (one initial call and then another for each induced allocation failure), we need to make sure that any relevant state is reset at the start of every call. From the `checkAllAllocationsFailures` doc comment:
 
@@ -385,11 +385,11 @@ then when running with `checkAllAllocationFailures`, we hit a scenario in which:
 
 This means that, although an `OutOfMemory` error was induced, our `parseTest` call will succeed, which triggers `checkAllAllocationFailures` to return `error.NondeterministicMemoryUsage` and fail the test, as it assumes that all calls of the function with an induced allocation failure will have a return of `error.OutOfMemory`.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: After a bit of benchmarking, the current strategy of `std.BufMap.putMove` (to always try growing first, and then recovering from `OutOfMemory` if it gets hit) seems to be faster than the reverse (doing a key lookup first, and only trying to grow if the key is not already found [which would make it have a deterministic number of memory allocations]). This is just based on some naive attempts at implementing the reverse strategy, though.
 
-</aside></p>
+</aside>
 
 This is something of a false positive in terms of non-determinism, though, as the above scenario is still deterministic, but the `OutOfMemory` in one particular case is handled without bubbling up the error.
 
@@ -408,32 +408,32 @@ std.testing.checkAllAllocationFailures(
 
 This should generally be avoided, though, as treating `error.NondeterministicMemoryUsage` as a bug by default makes sense. Unless you know that part of the code you're testing has `OutOfMemory` recovery in place somewhere (like `std.BufMap.putMove`), then it's generally a good idea to ensure that the code under test doesn't erroneously/unexpectedly 'swallow' `OutOfMemory` errors.
 
-<p><aside class="note">
+<aside class="note">
 
 There is a [recently merged pull request](https://github.com/ziglang/zig/pull/11919) that adds a possible `error.SwallowedOutOfMemoryError` return from `checkAllAllocationFailures` that is triggered when `FailingAllocator` does induce `OutOfMemory`, but it doesn't get returned by `test_fn`. With this new error, it:
 
 - makes this caveat more understandable/obvious
 - allows the caller to ignore *only* the `error.SwallowedOutOfMemoryError` case while continuing to treat `error.NondeterministicMemoryUsage` as an error
 
-</aside></p>
+</aside>
 
 If your code's memory allocation is truly non-deterministic in the sense that subsequent runs could have *more* points of allocation than the initial run, then ignoring the `error.NondeterministicMemoryUsage` is inadvisable, as the strategy used by `checkAllAllocationFailures` would no longer be guaranteed to provide full coverage of all possible points of allocation failure.
 
-<p><aside class="note">
+<aside class="note">
 
 Fun fact: I ran into this caveat via fuzz testing while writing the section that follows. I was not previously aware of this `std.BufMap.putMove` behavior or that it could trigger `error.NondeterministicMemoryUsage` in `checkAllAllocationFailures`.
 
-</aside></p>
+</aside>
 
 ## Integrating with fuzz testing
 
 For projects where fuzz testing makes sense, it's possible to use `checkAllAllocationFailures` alongside fuzz testing to find bugs related to `OutOfMemory` error handling that are not (yet) covered by your test cases.
 
-<p><aside class="note">
+<aside class="note">
 
 See [Fuzzing Zig Code Using AFL++](https://www.ryanliptak.com/blog/fuzzing-zig-code/) for more information about the fuzzing setup used here
 
-</aside></p>
+</aside>
 
 For this, we'll need to create a modified version of our `parseTest` function from before where:
 
@@ -492,11 +492,11 @@ pub fn zigMain() !void {
 
 The simple `parse` function used as an example in this post is not very exciting in terms of fuzzing, unfortunately. Besides the `error.NondeterministicMemoryUsage` caveat, there's nothing more to be found once we've added in the `errdefer`'s mentioned previously (and the version without the `errdefer`'s would trigger a crash with any reasonable seed input, so `afl-fuzz` would refuse to fuzz until that is fixed). In more complex projects, though, fuzzing can be very helpful in finding novel `OutOfMemory`-related bugs.
 
-<p><aside class="note">
+<aside class="note">
 
 See also the ["Fuzzing to find memory bugs after allocation failure" section of this article](https://www.ryanliptak.com/blog/improving-fuzz-testing-with-zig-allocators/) for an alternate strategy that only checks one allocation failure per input. This would allow more inputs to be checked per second, but each input would not be as thoroughly checked. Still not quite sure which strategy would lead to the best results in terms of fuzz testing, but the thoroughness of the `checkAllAllocationFailures` version seems like it might win out.
 
-</aside></p>
+</aside>
 
 ## How it's been used so far
 

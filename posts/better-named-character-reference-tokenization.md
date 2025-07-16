@@ -1,8 +1,8 @@
-<p><aside class="note">
+<aside class="note">
 
 Note: I am not a 'browser engine' person, nor a 'data structures' person. I'm certain that an even better implementation than what I came up with is very possible.
 
-</aside></p>
+</aside>
 
 A while back, for <span style="border-bottom: 1px dotted; cursor: default;" title="the actual reason will be detailed later">no real reason</span>, I tried writing an implementation of a data structure tailored to the specific use case of [the *Named character reference state*](https://html.spec.whatwg.org/multipage/parsing.html#named-character-reference-state) of HTML tokenization (here's the [link to that experiment](https://github.com/squeek502/named-character-references)). Recently, I took that implementation, ported it to C++, and [used it to make some efficiency gains and fix some spec compliance issues](https://github.com/LadybirdBrowser/ladybird/pull/3011) in the [Ladybird browser](https://ladybird.org/).
 
@@ -12,7 +12,7 @@ Throughout this, I never actually looked at the implementations used in any of t
 - Compactness of the data (uses ~60% of the data size of Chrome's/Firefox's implementation)
 - Ease of use
 
-<p><aside class="note">
+<aside class="note">
 
 Note: I'm singling out these metrics because, in [the python script](https://github.com/chromium/chromium/blob/8469b0ca44e36be251999cc819ff96dc3ac43290/third_party/blink/renderer/build/scripts/make_html_entity_table.py#L29-L32) that generates the data structures used for named character reference tokenization in Blink (the browser engine of Chrome/Chromium), it contains this docstring (emphasis mine):
 
@@ -22,7 +22,7 @@ strings we could need, and then a mapping from offset+length -> entity
 data.</span> <b>That is compact, easy to use and efficient.</b><span class="token_string">"""</span>
 </code></pre>
 
-</aside></p>
+</aside>
 
 So, I thought I'd take you through what I came up with and how it compares to the implementations in the major browser engines. Mostly, though, I just think the data structure I used is neat and want to tell you about it (fair warning: it's not novel).
 
@@ -30,11 +30,11 @@ So, I thought I'd take you through what I came up with and how it compares to th
 
 A named character reference is an HTML entity specified using an ampersand (`&`) followed by an ASCII alphanumeric name. An ordained set of names will get transformed during HTML parsing into particular code point(s). For example, `&bigcirc;` is a valid named character reference that gets transformed into the symbol &bigcirc;, while `&amp;` will get transformed into &amp;.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: The &bigcirc; symbol is the Unicode code point `U+25EF`, which means it could also be specified as a *numeric* character reference using either `&#x25EF;` or `&#9711;`. We're only focusing on *named* character references, though.
 
-</aside></p>
+</aside>
 
 Here's a few properties of named character references that are relevant for what we'll ultimately be aiming to implement:
 
@@ -51,11 +51,11 @@ Most crucially, though, the mappings of named character references are *fixed*. 
 
 This means that it's now safe to represent the data in the minimum amount of bits possible without any fear of needing to accommodate more named character reference mappings in the future.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: This is a big part of why I think better solutions than mine should be very possible. I feel like I've only scratched the surface in terms of a purpose-built data structure for this particular task.
 
-</aside></p>
+</aside>
 
 ## Named character reference tokenization overview
 
@@ -83,11 +83,11 @@ document.write("&not");
 
 The expected result after parsing is <code>&notin;</code>, meaning the resolved character reference is `&notin;`. Let's go through why that is the case.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: I'm not super familiar with the [tree construction side of HTML parsing](https://html.spec.whatwg.org/multipage/parsing.html#tree-construction), so don't expect my explanation below to be fully accurate from that point of view. My explanation is solely focused on the tokenizer's side of things.
 
-</aside></p>
+</aside>
 
 After the closing script tag is tokenized, the parser adds an "insertion point" after it, and then the script within the tag itself is executed. So, right *before* the script is executed, the tokenizer input can be visualized as (where <code><span class="token_string insertion-point"></span></code> is the insertion point):
 
@@ -99,7 +99,7 @@ And then after the `<script>` is executed and the `document.write` call has run,
 
 What happens from the tokenizer's perspective is that after the closing `</script>` tag, `&not` comes next in the input stream (which was inserted by `document.write`), and then the characters after `&not` are `in;`, so ultimately a tokenizer going character-by-character should see an unbroken `&notin;`, recognize that as a valid character reference, and translate it to <code>&notin;</code>.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: The ordering here matters. For example, if you put `&not` first and use `document.write` to add a trailing `in;` like so:
 
@@ -111,7 +111,7 @@ document.write("in;");
 
 then it does not result in <code>&notin;</code> (the result of `&notin;`), but instead <code>&not;in;</code>, since from the tokenizer's point of view it sees `&not<`, and therefore treats `&not` as a character reference since the `<` cannot lead to any other valid character references. Then, after the `<script>` tag is parsed and runs, `&not` has already been converted to <code>&not;</code> so the `in;` is just appended after it.
 
-</aside></p>
+</aside>
 
 To further show why this can be tricky to handle, consider also the possibility of `document.write` writing one character at a time, like so:
 
@@ -151,7 +151,7 @@ All of this is to say that a "consume the longest valid named character referenc
 
 The second strategy seems like the better approach to me, so that's what my implementation will be focused on. We'll see both strategies later on, though.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: I'm not sure if it's feasible to implement an HTML parser that tries to resolve `<script>` tags upfront and then only fully tokenizes the resulting (immutable) input after that. If it is feasible, it might not be worth it since (unless I'm thinking about it wrong) it would probably involve multiple passes, since it's possible for a `<script>` tag to `document.write` a `<script>` tag, and for that `<script>` tag to write another, etc.
 
@@ -167,7 +167,7 @@ for (let char of "<script>document.write('&not');<\/script>") {
 
 (this is expected to be parsed into <code>&notin;</code>, the same as the other examples above)
 
-</aside></p>
+</aside>
 
 ## Trie implementation
 
@@ -194,14 +194,14 @@ A data structure that seems pretty good for this sort of thing is a [trie](https
 <svg id="mermaid-trie" width="100%" xmlns="http://www.w3.org/2000/svg" class="mermaid-flowchart flowchart" style="max-width: 289.9666748046875px;" viewBox="0 0 289.9666748046875 438" role="graphics-document document" aria-roledescription="flowchart-v2"><g><marker id="mermaid-123_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1px; stroke-dasharray: 1px, 0px;"></path></marker><marker id="mermaid-123_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1px; stroke-dasharray: 1px, 0px;"></path></marker><marker id="mermaid-123_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1px; stroke-dasharray: 1px, 0px;"></circle></marker><marker id="mermaid-123_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1px; stroke-dasharray: 1px, 0px;"></circle></marker><marker id="mermaid-123_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2px; stroke-dasharray: 1px, 0px;"></path></marker><marker id="mermaid-123_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2px; stroke-dasharray: 1px, 0px;"></path></marker><g class="root"><g class="clusters"></g><g class="edgePaths"><path d="M145.725,38.5L145.642,39.25C145.558,40,145.392,41.5,145.308,43.083C145.225,44.667,145.225,46.333,145.225,47.167L145.225,48" id="L_root_n_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M145.225,87L145.225,87.833C145.225,88.667,145.225,90.333,145.225,92C145.225,93.667,145.225,95.333,145.225,96.167L145.225,97" id="L_n_letter_o_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M145.225,136L145.225,136.833C145.225,137.667,145.225,139.333,145.225,141C145.225,142.667,145.225,144.333,145.225,145.167L145.225,146" id="L_letter_o_t_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M129.675,170.774L120.226,173.978C110.778,177.182,91.881,183.591,82.432,187.629C72.983,191.667,72.983,193.333,72.983,194.167L72.983,195" id="L_t_i1_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M160.775,170.774L170.224,173.978C179.672,177.182,198.569,183.591,208.018,187.629C217.467,191.667,217.467,193.333,217.467,194.167L217.467,195" id="L_t_n1_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M72.983,234L72.983,234.833C72.983,235.667,72.983,237.333,72.983,239C72.983,240.667,72.983,242.333,72.983,243.167L72.983,244" id="L_i1_n2_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M217.467,234L217.467,234.833C217.467,235.667,217.467,237.333,217.467,239C217.467,240.667,217.467,242.333,217.467,243.167L217.467,244" id="L_n1_i2_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M217.467,283L217.467,283.833C217.467,284.667,217.467,286.333,217.467,288C217.467,289.667,217.467,291.333,217.467,292.167L217.467,293" id="L_i2_v1_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M72.983,283L72.983,283.833C72.983,284.667,72.983,286.333,72.983,288C72.983,289.667,72.983,291.333,72.983,292.167L72.983,293" id="L_n2_v2_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M201.175,320.745L195.822,323.454C190.469,326.164,179.764,331.582,174.411,335.124C169.058,338.667,169.058,340.333,169.058,341.167L169.058,342" id="L_v1_a1_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M217.467,332L217.467,332.833C217.467,333.667,217.467,335.333,217.467,337C217.467,338.667,217.467,340.333,217.467,341.167L217.467,342" id="L_v1_b1_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M233.758,320.787L239.071,323.489C244.383,326.191,255.008,331.596,260.321,335.131C265.633,338.667,265.633,340.333,265.633,341.167L265.633,342" id="L_v1_c1_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M56.692,320.745L51.339,323.454C45.986,326.164,35.281,331.582,29.928,335.124C24.575,338.667,24.575,340.333,24.575,341.167L24.575,342" id="L_v2_a2_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M72.983,332L72.983,332.833C72.983,333.667,72.983,335.333,72.983,337C72.983,338.667,72.983,340.333,72.983,341.167L72.983,342" id="L_v2_b2_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M89.275,320.787L94.587,323.489C99.9,326.191,110.525,331.596,115.838,335.131C121.15,338.667,121.15,340.333,121.15,341.167L121.15,342" id="L_v2_c2_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M169.058,381L169.058,381.833C169.058,382.667,169.058,384.333,169.058,386C169.058,387.667,169.058,389.333,169.058,390.167L169.058,391" id="L_a1_semi1_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M217.467,381L217.467,381.833C217.467,382.667,217.467,384.333,217.467,386C217.467,387.667,217.467,389.333,217.467,390.167L217.467,391" id="L_b1_semi2_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M265.633,381L265.633,381.833C265.633,382.667,265.633,384.333,265.633,386C265.633,387.667,265.633,389.333,265.633,390.167L265.633,391" id="L_c1_semi3_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M24.575,381L24.575,381.833C24.575,382.667,24.575,384.333,24.575,386C24.575,387.667,24.575,389.333,24.575,390.167L24.575,391" id="L_a2_semi4_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M72.983,381L72.983,381.833C72.983,382.667,72.983,384.333,72.983,386C72.983,387.667,72.983,389.333,72.983,390.167L72.983,391" id="L_b2_semi5_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path><path d="M121.15,381L121.15,381.833C121.15,382.667,121.15,384.333,121.15,386C121.15,387.667,121.15,389.333,121.15,390.167L121.15,391" id="L_c2_semi6_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=""></path></g><g class="edgeLabels"><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel "></span></div></foreignObject></g></g></g><g class="nodes"><g class="node default  " id="flowchart-root-0" transform="translate(145.2249984741211, 23)"><polygon points="15,0 30,-15 15,-30 0,-15" class="label-container" transform="translate(-15,15)"></polygon><g class="label" style="" transform="translate(0, 0)"><rect></rect><foreignObject width="0" height="0"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "></span></div></foreignObject></g></g><g class="node default  " id="flowchart-n-1" transform="translate(145.2249984741211, 67.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-16.75" y="-19.5" width="33.5" height="39"></rect><g class="label" style="" transform="translate(-4.375, -12)"><rect></rect><foreignObject width="8.75" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>n</p></span></div></foreignObject></g></g><g class="node default  " id="flowchart-letter_o-3" transform="translate(145.2249984741211, 116.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-16.666664123535156" y="-19.5" width="33.33332824707031" height="39"></rect><g class="label" style="" transform="translate(-4.291664123535156, -12)"><rect></rect><foreignObject width="8.583328247070312" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>o</p></span></div></foreignObject></g></g><g class="node default end-of-word" id="flowchart-t-5" transform="translate(145.2249984741211, 165.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-15.550003051757812" y="-19.5" width="31.100006103515625" height="39"></rect><g class="label" style="" transform="translate(-3.1750030517578125, -12)"><rect></rect><foreignObject width="6.350006103515625" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>t</p></span></div></foreignObject></g></g><g class="node default  " id="flowchart-i1-7" transform="translate(72.98332977294922, 214.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-14.658332824707031" y="-19.5" width="29.316665649414062" height="39"></rect><g class="label" style="" transform="translate(-2.2833328247070312, -12)"><rect></rect><foreignObject width="4.5666656494140625" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>i</p></span></div></foreignObject></g></g><g class="node default  " id="flowchart-n1-8" transform="translate(217.46666717529297, 214.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-16.75" y="-19.5" width="33.5" height="39"></rect><g class="label" style="" transform="translate(-4.375, -12)"><rect></rect><foreignObject width="8.75" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>n</p></span></div></foreignObject></g></g><g class="node default  " id="flowchart-n2-10" transform="translate(72.98332977294922, 263.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-16.75" y="-19.5" width="33.5" height="39"></rect><g class="label" style="" transform="translate(-4.375, -12)"><rect></rect><foreignObject width="8.75" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>n</p></span></div></foreignObject></g></g><g class="node default  " id="flowchart-i2-12" transform="translate(217.46666717529297, 263.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-14.658332824707031" y="-19.5" width="29.316665649414062" height="39"></rect><g class="label" style="" transform="translate(-2.2833328247070312, -12)"><rect></rect><foreignObject width="4.5666656494140625" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>i</p></span></div></foreignObject></g></g><g class="node default  " id="flowchart-v1-14" transform="translate(217.46666717529297, 312.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-16.291664123535156" y="-19.5" width="32.58332824707031" height="39"></rect><g class="label" style="" transform="translate(-3.9166641235351562, -12)"><rect></rect><foreignObject width="7.8333282470703125" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>v</p></span></div></foreignObject></g></g><g class="node default  " id="flowchart-v2-16" transform="translate(72.98332977294922, 312.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-16.291664123535156" y="-19.5" width="32.58332824707031" height="39"></rect><g class="label" style="" transform="translate(-3.9166641235351562, -12)"><rect></rect><foreignObject width="7.8333282470703125" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>v</p></span></div></foreignObject></g></g><g class="node default  " id="flowchart-a1-18" transform="translate(169.05833435058594, 361.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-16.574996948242188" y="-19.5" width="33.149993896484375" height="39"></rect><g class="label" style="" transform="translate(-4.1999969482421875, -12)"><rect></rect><foreignObject width="8.399993896484375" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>a</p></span></div></foreignObject></g></g><g class="node default  " id="flowchart-b1-19" transform="translate(217.46666717529297, 361.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-16.833335876464844" y="-19.5" width="33.66667175292969" height="39"></rect><g class="label" style="" transform="translate(-4.458335876464844, -12)"><rect></rect><foreignObject width="8.916671752929688" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>b</p></span></div></foreignObject></g></g><g class="node default  " id="flowchart-c1-20" transform="translate(265.63333892822266, 361.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-16.333335876464844" y="-19.5" width="32.66667175292969" height="39"></rect><g class="label" style="" transform="translate(-3.9583358764648438, -12)"><rect></rect><foreignObject width="7.9166717529296875" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>c</p></span></div></foreignObject></g></g><g class="node default  " id="flowchart-a2-22" transform="translate(24.574996948242188, 361.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-16.574996948242188" y="-19.5" width="33.149993896484375" height="39"></rect><g class="label" style="" transform="translate(-4.1999969482421875, -12)"><rect></rect><foreignObject width="8.399993896484375" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>a</p></span></div></foreignObject></g></g><g class="node default  " id="flowchart-b2-23" transform="translate(72.98332977294922, 361.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-16.833335876464844" y="-19.5" width="33.66667175292969" height="39"></rect><g class="label" style="" transform="translate(-4.458335876464844, -12)"><rect></rect><foreignObject width="8.916671752929688" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>b</p></span></div></foreignObject></g></g><g class="node default  " id="flowchart-c2-24" transform="translate(121.1500015258789, 361.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-16.333335876464844" y="-19.5" width="32.66667175292969" height="39"></rect><g class="label" style="" transform="translate(-3.9583358764648438, -12)"><rect></rect><foreignObject width="7.9166717529296875" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>c</p></span></div></foreignObject></g></g><g class="node default end-of-word" id="flowchart-semi1-26" transform="translate(169.05833435058594, 410.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-15.316665649414062" y="-19.5" width="30.633331298828125" height="39"></rect><g class="label" style="" transform="translate(-2.9416656494140625, -12)"><rect></rect><foreignObject width="5.883331298828125" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>;</p></span></div></foreignObject></g></g><g class="node default end-of-word" id="flowchart-semi2-28" transform="translate(217.46666717529297, 410.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-15.316665649414062" y="-19.5" width="30.633331298828125" height="39"></rect><g class="label" style="" transform="translate(-2.9416656494140625, -12)"><rect></rect><foreignObject width="5.883331298828125" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>;</p></span></div></foreignObject></g></g><g class="node default end-of-word" id="flowchart-semi3-30" transform="translate(265.63333892822266, 410.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-15.316665649414062" y="-19.5" width="30.633331298828125" height="39"></rect><g class="label" style="" transform="translate(-2.9416656494140625, -12)"><rect></rect><foreignObject width="5.883331298828125" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>;</p></span></div></foreignObject></g></g><g class="node default end-of-word" id="flowchart-semi4-32" transform="translate(24.574996948242188, 410.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-15.316665649414062" y="-19.5" width="30.633331298828125" height="39"></rect><g class="label" style="" transform="translate(-2.9416656494140625, -12)"><rect></rect><foreignObject width="5.883331298828125" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>;</p></span></div></foreignObject></g></g><g class="node default end-of-word" id="flowchart-semi5-34" transform="translate(72.98332977294922, 410.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-15.316665649414062" y="-19.5" width="30.633331298828125" height="39"></rect><g class="label" style="" transform="translate(-2.9416656494140625, -12)"><rect></rect><foreignObject width="5.883331298828125" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>;</p></span></div></foreignObject></g></g><g class="node default end-of-word" id="flowchart-semi6-36" transform="translate(121.1500015258789, 410.5)"><rect class="basic label-container" style="" rx="19.5" ry="19.5" x="-15.316665649414062" y="-19.5" width="30.633331298828125" height="39"></rect><g class="label" style="" transform="translate(-2.9416656494140625, -12)"><rect></rect><foreignObject width="5.883331298828125" height="24"><div style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel "><p>;</p></span></div></foreignObject></g></g></g></g></g></svg>
 </div>
 
-<p><aside class="note">
+<aside class="note">
 
 Notes:
 - The `&` is excluded from the trie since it's the first character of *every* named character reference.
 - The nodes with a red outline are those marked as the end of a valid word in the set.
 - Typically, trie visualizations put the letters on the connections between nodes rather than on the nodes themselves. I'm putting them on the nodes themselves for reasons that will be discussed later.
 
-</aside></p>
+</aside>
 
 With such a trie, you search for the next character within the list of the current node's children (starting from the root). If the character is found within the children, you then set that child node as the current node and continue on for the character after that, etc.
 
@@ -215,11 +215,11 @@ You'll notice that the mapped code point (&notinvc;) is present on the diagram a
 
 ## A brief detour: Representing a trie in memory
 
-<p><aside class="note">
+<aside class="note">
 
 Note: The code examples in this section will be using [Zig](https://www.ziglang.org/) syntax. 
 
-</aside></p>
+</aside>
 
 One way to represent a trie node is to use an array of optional pointers for its children (where each index into the array represents a child node with that byte value as its character), like so:
 
@@ -233,11 +233,11 @@ const Node = struct {
 
 Earlier, I said that trie visualizations typically put the letters on the connections between nodes rather than the nodes themselves, and, with *this* way of representing the trie, I think that makes a lot of sense, since the *connections* are the information being stored on each node.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: For the examples in this section, we'll use a trie that only contains the words `GG`, `GL`, and `HF`.
 
-</aside></p>
+</aside>
 
 So, this representation can be visualized like so:
 
@@ -320,11 +320,11 @@ const nodes = [6]Node{
 };
 ```
 
-<p><aside class="note">
+<aside class="note">
 
 Note: `first_child_index` having the value 0 doubles as a 'no children' indicator, since index 0 is always the root node and therefore can never be a valid child node.
 
-</aside></p>
+</aside>
 
 This representation can be visualized like so:
 
@@ -335,11 +335,11 @@ This representation can be visualized like so:
 <svg aria-roledescription="flowchart-v2" role="graphics-document document" style="max-width: 345px;" viewBox="0 0 345 80" class="mermaid-flowchart flowchart" xmlns="http://www.w3.org/2000/svg" id="graph-3490" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:ev="http://www.w3.org/2001/xml-events"><g><marker orient="auto" markerHeight="8" markerWidth="8" markerUnits="userSpaceOnUse" refY="5" refX="5" viewBox="0 0 10 10" class="marker flowchart-v2" id="graph-5112_flowchart-v2-pointEnd"><path style="stroke-width: 1px; stroke-dasharray: 1px, 0px;" class="arrowMarkerPath" d="M 0 0 L 10 5 L 0 10 z"></path></marker><marker orient="auto" markerHeight="8" markerWidth="8" markerUnits="userSpaceOnUse" refY="5" refX="4.5" viewBox="0 0 10 10" class="marker flowchart-v2" id="graph-5112_flowchart-v2-pointStart"><path style="stroke-width: 1px; stroke-dasharray: 1px, 0px;" class="arrowMarkerPath" d="M 0 5 L 10 10 L 10 0 z"></path></marker><marker orient="auto" markerHeight="11" markerWidth="11" markerUnits="userSpaceOnUse" refY="5" refX="11" viewBox="0 0 10 10" class="marker flowchart-v2" id="graph-5112_flowchart-v2-circleEnd"><circle style="stroke-width: 1px; stroke-dasharray: 1px, 0px;" class="arrowMarkerPath" r="5" cy="5" cx="5"></circle></marker><marker orient="auto" markerHeight="11" markerWidth="11" markerUnits="userSpaceOnUse" refY="5" refX="-1" viewBox="0 0 10 10" class="marker flowchart-v2" id="graph-5112_flowchart-v2-circleStart"><circle style="stroke-width: 1px; stroke-dasharray: 1px, 0px;" class="arrowMarkerPath" r="5" cy="5" cx="5"></circle></marker><marker orient="auto" markerHeight="11" markerWidth="11" markerUnits="userSpaceOnUse" refY="5.2" refX="12" viewBox="0 0 11 11" class="marker cross flowchart-v2" id="graph-5112_flowchart-v2-crossEnd"><path style="stroke-width: 2px; stroke-dasharray: 1px, 0px;" class="arrowMarkerPath" d="M 1,1 l 9,9 M 10,1 l -9,9"></path></marker><marker orient="auto" markerHeight="11" markerWidth="11" markerUnits="userSpaceOnUse" refY="5.2" refX="-1" viewBox="0 0 11 11" class="marker cross flowchart-v2" id="graph-5112_flowchart-v2-crossStart"><path style="stroke-width: 2px; stroke-dasharray: 1px, 0px;" class="arrowMarkerPath" d="M 1,1 l 9,9 M 10,1 l -9,9"></path></marker><g class="root"><g class="clusters"></g><g class="edgePaths"><path marker-end="url(#graph-5112_flowchart-v2-pointEnd)" class="edge-thickness-normal edge-pattern-solid flowchart-link" id="L_root_g_0" d="M23,43 Q 40,70 65,45"></path><path marker-end="url(#graph-5112_flowchart-v2-pointEnd)" class="edge-thickness-normal edge-pattern-solid flowchart-link" id="L_g_g2_0" d="M90,45 Q 130,80 185,45"></path><path marker-end="url(#graph-5112_flowchart-v2-pointEnd)" class="edge-thickness-normal edge-pattern-solid flowchart-link" id="L_h_f_0" d="M145,45 Q 230,100 305,45"></path><path marker-end="url(#graph-5112_flowchart-v2-pointEnd)" class="edge-thickness-normal edge-pattern-dotted flowchart-link" id="L_g_h_0" d="M100,27L120,27"></path><path marker-end="url(#graph-5112_flowchart-v2-pointEnd)" class="edge-thickness-normal edge-pattern-dotted flowchart-link" id="L_g_l_0" d="M220,27L240,27"></path></g><g class="edgeLabels"></g><g class="nodes"><g transform="translate(23, 27.5)" id="flowchart-root-0" class="node default"><polygon transform="translate(-15,15)" class="label-container" points="15,0 30,-15 15,-30 0,-15"></polygon><g transform="translate(0, 0)" style="" class="label"><rect></rect><foreignObject height="0" width="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g><g transform="translate(80.5999984741211, 27.5)" id="flowchart-g-1" class="node default"><rect height="39" width="37.19999694824219" y="-19.5" x="-18.599998474121094" ry="19.5" rx="19.5" style="" class="basic label-container"></rect><g transform="translate(-6.224998474121094, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="12.449996948242188"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>G</p></span></div></foreignObject></g></g><g transform="translate(141.3499984741211, 27.5)" id="flowchart-h-2" class="node default"><rect height="39" width="36.30000305175781" y="-19.5" x="-18.150001525878906" ry="19.5" rx="19.5" style="" class="basic label-container"></rect><g transform="translate(-5.775001525878906, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="11.550003051757812"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>H</p></span></div></foreignObject></g></g><g transform="translate(202.0999984741211, 27.5)" id="flowchart-g2-3" class="node default end-of-word"><rect height="39" width="37.19999694824219" y="-19.5" x="-18.599998474121094" ry="19.5" rx="19.5" style="" class="basic label-container"></rect><g transform="translate(-6.224998474121094, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="12.449996948242188"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>G</p></span></div></foreignObject></g></g><g transform="translate(261.5249938964844, 27.5)" id="flowchart-l-4" class="node default end-of-word"><rect height="39" width="33.649993896484375" y="-19.5" x="-16.824996948242188" ry="19.5" rx="19.5" style="" class="basic label-container"></rect><g transform="translate(-4.4499969482421875, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="8.899993896484375"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>L</p></span></div></foreignObject></g></g><g transform="translate(319.6083221435547, 27.5)" id="flowchart-f-5" class="node default end-of-word"><rect height="39" width="34.51666259765625" y="-19.5" x="-17.258331298828125" ry="19.5" rx="19.5" style="" class="basic label-container"></rect><g transform="translate(-4.883331298828125, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="9.76666259765625"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>F</p></span></div></foreignObject></g></g></g></g></g></g></svg>
 </div>
 
-<p><aside class="note">
+<aside class="note">
 
 You might find it interesting to note that this diagram is functionally the same as the previous ('children as a linked list') one; the connections are exactly the same, the nodes have just been rearranged.
 
-</aside></p>
+</aside>
 
 This still means that searching a child list uses a `O(n)` linear scan, but this representation makes those searches *much* more friendly to the CPU, and greatly reduces the size of each node.
 
@@ -347,19 +347,19 @@ This still means that searching a child list uses a `O(n)` linear scan, but this
 
 To get an idea of how the different representations compare, here's a breakdown for a trie containing the full set of named character references (2,231 words).
 
-<p><aside class="note">
+<aside class="note">
 
 The code I'm using for the benchmarks below is available [here](https://gist.github.com/squeek502/e1627d2e7e2ac115ce7d9f6d5cc01df0).
 
-</aside></p>
+</aside>
 
 #### Data size
 
-<p><aside class="note">
+<aside class="note">
 
 Note: The sizes below assume a 64-bit architecture, i.e. pointers are 8 bytes wide.
 
-</aside></p>
+</aside>
 
 - **Representation 1** ('connections'):
   - Each node contains a fixed-size array of optional child node pointers
@@ -376,13 +376,13 @@ Note: The sizes below assume a 64-bit architecture, i.e. pointers are 8 bytes wi
 
 That is, the 'flattened' version is <sup>1</sup>/<sub>514</sub> the size of the 'connections' version, and <sup>1</sup>/<sub>6</sub> the size of the 'linked list' version.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: I went with `[256]?*Node` to keep the representations similar in what information they are capable of storing. Instead, you could make the trie only support ASCII characters and use `[128]?*Node` for the `children` field, which would roughly cut the size of the trie in half (from <span class="token_error">19.32 MiB</span> to <span class="token_error">9.70 MiB</span>).
 
 In the 'linked list' and 'flattened' representations, restricting the characters to the ASCII set would only decrease the size of the nodes by 1 bit (`char` field would go from a `u8` to a `u7`).
 
-</aside></p>
+</aside>
 
 #### Performance
 
@@ -431,17 +431,17 @@ Note that the instruction counts are roughly the same between the 'friendly' and
 
 When using the 'flattened' representation for this particular task, we're trading off a ~20% difference in lookup speed for 2-3 orders of magnitude difference in data size. This seems pretty okay, especially for what we're ultimately interested in implementing: a fully static and unchanging data structure, so there's no need to worry about how easy it is to modify after construction.
 
-<p><aside class="note">
+<aside class="note">
 
 For completeness, I'll also note that it's possible to eliminate pointers while still using the 'connections' representation. For example, it could be done by allocating all nodes into an array, and then making the `children` field something like `[256]u16` where the values are indexes into the array of nodes (`u16` because it needs to be able to store an index to one of the 9,854 nodes in the trie, but it's not `?u16` because the index 0 can double as `null` since the root can never be a child)
 
 This would keep the `O(1)` complexity to find a particular child *and* decrease the data size, but it would still be 2 orders of magnitude larger than the 'flattened' version (using `[256]u16` would make the trie take up 4.81 MiB, `[128]u16` would be 2.41 MiB).
 
-</aside></p>
+</aside>
 
 ### An important note moving forward
 
-<p><aside class="important">
+<aside class="important">
 
 In the next section, I will show diagrams that look like this in an effort to make them easier to understand:
 
@@ -458,33 +458,33 @@ but keep in mind that *really* the 'flattened' representation (representation 3)
 <svg aria-roledescription="flowchart-v2" role="graphics-document document" style="max-width: 345px;" viewBox="0 0 345 80" class="mermaid-flowchart flowchart" xmlns="http://www.w3.org/2000/svg" id="graph-3490" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:ev="http://www.w3.org/2001/xml-events"><g><marker orient="auto" markerHeight="8" markerWidth="8" markerUnits="userSpaceOnUse" refY="5" refX="5" viewBox="0 0 10 10" class="marker flowchart-v2" id="graph-5112_flowchart-v2-pointEnd"><path style="stroke-width: 1px; stroke-dasharray: 1px, 0px;" class="arrowMarkerPath" d="M 0 0 L 10 5 L 0 10 z"></path></marker><marker orient="auto" markerHeight="8" markerWidth="8" markerUnits="userSpaceOnUse" refY="5" refX="4.5" viewBox="0 0 10 10" class="marker flowchart-v2" id="graph-5112_flowchart-v2-pointStart"><path style="stroke-width: 1px; stroke-dasharray: 1px, 0px;" class="arrowMarkerPath" d="M 0 5 L 10 10 L 10 0 z"></path></marker><marker orient="auto" markerHeight="11" markerWidth="11" markerUnits="userSpaceOnUse" refY="5" refX="11" viewBox="0 0 10 10" class="marker flowchart-v2" id="graph-5112_flowchart-v2-circleEnd"><circle style="stroke-width: 1px; stroke-dasharray: 1px, 0px;" class="arrowMarkerPath" r="5" cy="5" cx="5"></circle></marker><marker orient="auto" markerHeight="11" markerWidth="11" markerUnits="userSpaceOnUse" refY="5" refX="-1" viewBox="0 0 10 10" class="marker flowchart-v2" id="graph-5112_flowchart-v2-circleStart"><circle style="stroke-width: 1px; stroke-dasharray: 1px, 0px;" class="arrowMarkerPath" r="5" cy="5" cx="5"></circle></marker><marker orient="auto" markerHeight="11" markerWidth="11" markerUnits="userSpaceOnUse" refY="5.2" refX="12" viewBox="0 0 11 11" class="marker cross flowchart-v2" id="graph-5112_flowchart-v2-crossEnd"><path style="stroke-width: 2px; stroke-dasharray: 1px, 0px;" class="arrowMarkerPath" d="M 1,1 l 9,9 M 10,1 l -9,9"></path></marker><marker orient="auto" markerHeight="11" markerWidth="11" markerUnits="userSpaceOnUse" refY="5.2" refX="-1" viewBox="0 0 11 11" class="marker cross flowchart-v2" id="graph-5112_flowchart-v2-crossStart"><path style="stroke-width: 2px; stroke-dasharray: 1px, 0px;" class="arrowMarkerPath" d="M 1,1 l 9,9 M 10,1 l -9,9"></path></marker><g class="root"><g class="clusters"></g><g class="edgePaths"><path marker-end="url(#graph-5112_flowchart-v2-pointEnd)" class="edge-thickness-normal edge-pattern-solid flowchart-link" id="L_root_g_0" d="M23,43 Q 40,70 65,45"></path><path marker-end="url(#graph-5112_flowchart-v2-pointEnd)" class="edge-thickness-normal edge-pattern-solid flowchart-link" id="L_g_g2_0" d="M90,45 Q 130,80 185,45"></path><path marker-end="url(#graph-5112_flowchart-v2-pointEnd)" class="edge-thickness-normal edge-pattern-solid flowchart-link" id="L_h_f_0" d="M145,45 Q 230,100 305,45"></path><path marker-end="url(#graph-5112_flowchart-v2-pointEnd)" class="edge-thickness-normal edge-pattern-dotted flowchart-link" id="L_g_h_0" d="M100,27L120,27"></path><path marker-end="url(#graph-5112_flowchart-v2-pointEnd)" class="edge-thickness-normal edge-pattern-dotted flowchart-link" id="L_g_l_0" d="M220,27L240,27"></path></g><g class="edgeLabels"></g><g class="nodes"><g transform="translate(23, 27.5)" id="flowchart-root-0" class="node default"><polygon transform="translate(-15,15)" class="label-container" points="15,0 30,-15 15,-30 0,-15"></polygon><g transform="translate(0, 0)" style="" class="label"><rect></rect><foreignObject height="0" width="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g><g transform="translate(80.5999984741211, 27.5)" id="flowchart-g-1" class="node default"><rect height="39" width="37.19999694824219" y="-19.5" x="-18.599998474121094" ry="19.5" rx="19.5" style="" class="basic label-container"></rect><g transform="translate(-6.224998474121094, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="12.449996948242188"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>G</p></span></div></foreignObject></g></g><g transform="translate(141.3499984741211, 27.5)" id="flowchart-h-2" class="node default"><rect height="39" width="36.30000305175781" y="-19.5" x="-18.150001525878906" ry="19.5" rx="19.5" style="" class="basic label-container"></rect><g transform="translate(-5.775001525878906, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="11.550003051757812"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>H</p></span></div></foreignObject></g></g><g transform="translate(202.0999984741211, 27.5)" id="flowchart-g2-3" class="node default end-of-word"><rect height="39" width="37.19999694824219" y="-19.5" x="-18.599998474121094" ry="19.5" rx="19.5" style="" class="basic label-container"></rect><g transform="translate(-6.224998474121094, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="12.449996948242188"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>G</p></span></div></foreignObject></g></g><g transform="translate(261.5249938964844, 27.5)" id="flowchart-l-4" class="node default end-of-word"><rect height="39" width="33.649993896484375" y="-19.5" x="-16.824996948242188" ry="19.5" rx="19.5" style="" class="basic label-container"></rect><g transform="translate(-4.4499969482421875, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="8.899993896484375"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>L</p></span></div></foreignObject></g></g><g transform="translate(319.6083221435547, 27.5)" id="flowchart-f-5" class="node default end-of-word"><rect height="39" width="34.51666259765625" y="-19.5" x="-17.258331298828125" ry="19.5" rx="19.5" style="" class="basic label-container"></rect><g transform="translate(-4.883331298828125, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="9.76666259765625"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>F</p></span></div></foreignObject></g></g></g></g></g></g></svg>
 </div>
 
-</aside></p>
+</aside>
 
 ## DAFSA implementation
 
 A while back at the same Zig meetup where I gave [a talk about my Windows resource compiler](https://www.youtube.com/watch?v=RZczLb_uI9E), Niles Salter aka [Validark](https://validark.dev/) gave a talk titled ***Better data structures and where to find them***. It was nominally about [his novel autocomplete data structure](https://validark.dev/DynSDT/), but the stated purpose of the talk was to get people interested in learning about data structures and potentially inventing their own.
 
-<p><aside class="note">
+<aside class="note">
 
 Unfortunately, the recording/audio quality didn't end up being good enough to warrant uploading the talk anywhere (see the recording of my talk to get a sense of that).
 
-</aside></p>
+</aside>
 
 During the talk, I thought back to when [I contributed to an HTML parser implementation](https://github.com/watzon/zhtml/pulls?q=is%3Apr+is%3Aclosed+author%3Asqueek502) and had to leave proper *named character reference tokenization* as a `TODO` because I wasn't sure how to approach it. I can't remember if a [*deterministic acyclic finite state automaton*](https://en.wikipedia.org/wiki/Deterministic_acyclic_finite_state_automaton) (DAFSA) was directly mentioned in the talk, or if I heard about it from talking with Niles afterwards, or if I learned of it while looking into trie variations later on (since the talk was about a novel trie variation), but, in any case, after learning about the DAFSA, it sounded like a pretty good tool for the job of named character references, so I <span style="border-bottom: 1px dotted; cursor: default;" title="this is the reason for all of this that was glossed over in the intro">revisited named character reference tokenization with that tool in hand</span>.
 
-<p><aside class="note">
+<aside class="note">
 
 In other words, the talk (at least partially) served its purpose for me in particular. I didn't come up with anything novel, but it got me to look into data structures more and I have Niles to thank for that.
 
-</aside></p>
+</aside>
 
 ### What is a DAFSA?
 
-<p><aside class="note">
+<aside class="note">
 
 Note: There are a few names for a [DAFSA](https://en.wikipedia.org/wiki/Deterministic_acyclic_finite_state_automaton): [DAWG](https://web.archive.org/web/20220722224703/http://pages.pathcom.com/~vadco/dawg.html), [MA-FSA](https://pkg.go.dev/github.com/smartystreets/mafsa), etc.
 
-</aside></p>
+</aside>
 
 A DAFSA is essentially the 'flattened' representation of a trie, but, more importantly, certain types of redundant nodes are eliminated during its construction (the particulars of this aren't too relevant here so I'll skip them; see [here](https://stevehanov.ca/blog/?id=115) if you're interested).
 
@@ -521,11 +521,11 @@ Then, to get a unique index for a given word, traverse the DAFSA as normal, but:
 - For any *non-matching* node that is iterated when searching a list of children, add their `number` to the unique index
 - For nodes that *match* the current character, if the node is a valid end-of-word, add 1 to the unique index
 
-<p><aside class="note">
+<aside class="note">
 
 Note that the "non-matching node that is iterated when searching a list of children" part of this algorithm effectively relies on the DAFSA using the `O(n)` search of the 'flattened' representation of a trie discussed earlier.
 
-</aside></p>
+</aside>
 
 For example, if we had a DAFSA with `a`, `b`, `c`, and `d` as possible first characters (in that order), and the word we're looking for starts with `c`, then we'll iterate over `a` and `b` when looking for `c` in the list of children, so we add the numbers of the `a` and `b` nodes (whatever they happen to be) to the unique index. Here's an illustration:
 
@@ -533,11 +533,11 @@ For example, if we had a DAFSA with `a`, `b`, `c`, and `d` as possible first cha
 <svg width="100%" xmlns="http://www.w3.org/2000/svg" class="mermaid-flowchart flowchart" style="max-width: 200px;" viewBox="0 0 200 100" role="graphics-document document" aria-roledescription="flowchart-v2"><g><marker orient="auto" markerHeight="8" markerWidth="8" markerUnits="userSpaceOnUse" refY="5" refX="5" viewBox="0 0 10 10" class="marker flowchart-v2" id="graph-2326_flowchart-v2-pointEnd"><path style="stroke-width: 1px; stroke-dasharray: 1px, 0px;" class="arrowMarkerPath" d="M 0 0 L 10 5 L 0 10 z"></path></marker><marker orient="auto" markerHeight="8" markerWidth="8" markerUnits="userSpaceOnUse" refY="5" refX="4.5" viewBox="0 0 10 10" class="marker flowchart-v2" id="graph-2326_flowchart-v2-pointStart"><path style="stroke-width: 1px; stroke-dasharray: 1px, 0px;" class="arrowMarkerPath" d="M 0 5 L 10 10 L 10 0 z"></path></marker><marker orient="auto" markerHeight="11" markerWidth="11" markerUnits="userSpaceOnUse" refY="5" refX="11" viewBox="0 0 10 10" class="marker flowchart-v2" id="graph-2326_flowchart-v2-circleEnd"><circle style="stroke-width: 1px; stroke-dasharray: 1px, 0px;" class="arrowMarkerPath" r="5" cy="5" cx="5"></circle></marker><marker orient="auto" markerHeight="11" markerWidth="11" markerUnits="userSpaceOnUse" refY="5" refX="-1" viewBox="0 0 10 10" class="marker flowchart-v2" id="graph-2326_flowchart-v2-circleStart"><circle style="stroke-width: 1px; stroke-dasharray: 1px, 0px;" class="arrowMarkerPath" r="5" cy="5" cx="5"></circle></marker><marker orient="auto" markerHeight="11" markerWidth="11" markerUnits="userSpaceOnUse" refY="5.2" refX="12" viewBox="0 0 11 11" class="marker cross flowchart-v2" id="graph-2326_flowchart-v2-crossEnd"><path style="stroke-width: 2px; stroke-dasharray: 1px, 0px;" class="arrowMarkerPath" d="M 1,1 l 9,9 M 10,1 l -9,9"></path></marker><marker orient="auto" markerHeight="11" markerWidth="11" markerUnits="userSpaceOnUse" refY="5.2" refX="-1" viewBox="0 0 11 11" class="marker cross flowchart-v2" id="graph-2326_flowchart-v2-crossStart"><path style="stroke-width: 2px; stroke-dasharray: 1px, 0px;" class="arrowMarkerPath" d="M 1,1 l 9,9 M 10,1 l -9,9"></path></marker><g class="root"><g class="clusters"></g><g class="edgePaths"><path marker-end="url(#graph-2326_flowchart-v2-pointEnd)" class="edge-thickness-normal edge-pattern-dotted flowchart-link" id="L_a_b_0" d="M44,68L53,68"></path><path marker-end="url(#graph-2326_flowchart-v2-pointEnd)" class="edge-thickness-normal edge-pattern-dotted flowchart-link" id="L_a_b_0" d="M93,68L102,68"></path><path style="" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" id="L_root_a_0" d="M86.309,26.735L76.062,29.445C65.815,32.156,45.32,37.578,35.072,41.122C24.825,44.667,24.825,46.333,24.825,47.167L24.825,48"></path><path style="" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" id="L_root_b_0" d="M89.878,30.303L87.144,32.419C84.41,34.535,78.943,38.768,76.209,41.717C73.475,44.667,73.475,46.333,73.475,47.167L73.475,48"></path><path style="" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" id="L_root_c_0" d="M106.272,30.303L108.839,32.419C111.407,34.535,116.541,38.768,119.108,41.717C121.675,44.667,121.675,46.333,121.675,47.167L121.675,48"></path><path style="" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" id="L_root_d_0" d="M109.825,26.75L119.833,29.459C129.841,32.167,149.858,37.583,159.867,41.125C169.875,44.667,169.875,46.333,169.875,47.167L169.875,48"></path></g><g class="edgeLabels"><g class="edgeLabel"><g transform="translate(0, 0)" class="label"><foreignObject height="0" width="0"><div class="labelBkg" xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g transform="translate(0, 0)" class="label"><foreignObject height="0" width="0"><div class="labelBkg" xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g transform="translate(0, 0)" class="label"><foreignObject height="0" width="0"><div class="labelBkg" xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g transform="translate(0, 0)" class="label"><foreignObject height="0" width="0"><div class="labelBkg" xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g></g><g class="nodes"><g transform="translate(97.57498931884766, 23)" id="flowchart-root-0" class="node default"><polygon transform="translate(-15,15)" class="label-container" points="15,0 30,-15 15,-30 0,-15"></polygon><g transform="translate(0, 0)" style="" class="label"><rect></rect><foreignObject height="0" width="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g><g transform="translate(24.824996948242188, 67.5)" id="flowchart-a-1" class="node default iterated-node"><rect height="39" width="33.649993896484375" y="-19.5" x="-16.824996948242188" ry="19.5" rx="19.5" style="" class="basic label-container"></rect><g transform="translate(-4.4499969482421875, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="8.899993896484375"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>a</p></span></div></foreignObject></g></g><g transform="translate(73.47499084472656, 67.5)" id="flowchart-b-2" class="node default iterated-node"><rect height="39" width="33.649993896484375" y="-19.5" x="-16.824996948242188" ry="19.5" rx="19.5" style="" class="basic label-container"></rect><g transform="translate(-4.4499969482421875, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="8.899993896484375"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>b</p></span></div></foreignObject></g></g><g transform="translate(121.67498779296875, 67.5)" id="flowchart-c-3" class="node default selected-path"><rect height="39" width="32.75" y="-19.5" x="-16.375" ry="19.5" rx="19.5" style="" class="basic label-container"></rect><g transform="translate(-4, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="8"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>c</p></span></div></foreignObject></g></g><g transform="translate(169.87498474121094, 67.5)" id="flowchart-d-4" class="node default"><rect height="39" width="33.649993896484375" y="-19.5" x="-16.824996948242188" ry="19.5" rx="19.5" style="" class="basic label-container"></rect><g transform="translate(-4.4499969482421875, -12)" style="" class="label"><rect></rect><foreignObject height="24" width="8.899993896484375"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>d</p></span></div></foreignObject></g></g></g></g></g></svg>
 </div>
 
-<p><aside class="note">
+<aside class="note">
 
 Note: If the `a` or `b` nodes were marked as valid end-of-words, we ignore that bit of information&mdash;we only add 1 to the unique index if a *matching node* (in this case `c`) is marked as an end-of-word.
 
-</aside></p>
+</aside>
 
 For a given word in the set, applying this algorithm will produce a number between 1 and the total number of words in the DAFSA (inclusive), and it's guaranteed that each word will end up with a unique number (i.e. this is a [minimal perfect hash](https://en.wikipedia.org/wiki/Perfect_hash_function#Minimal_perfect_hash_function)). Here's what that looks like for the example we've been using:
 
@@ -749,11 +749,11 @@ For a given word in the set, applying this algorithm will produce a number betwe
 
 After you have the unique index of a word, you can then use a lookup array for the associated values and index into it using `unique_index - 1`.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: It's not relevant here, but I think it's pretty cool that it's also possible to reconstruct the associated word if you have its unique index. You basically do the same thing as when you are calculating a unique index, but instead of adding to the unique index you're subtracting from it as you traverse the DAFSA. A tidbit that I accidentally ran into is that [this 'reverse lookup' only works if you include the end-of-word nodes themselves in their own 'counts of possible words from that node'](https://github.com/squeek502/named-character-references/commit/6619a3a8d1e86b1174269f73b413d957e56df975).
 
-</aside></p>
+</aside>
 
 ## Trie vs DAFSA for named character references
 
@@ -977,11 +977,11 @@ However, while using 21 bits to represent the mapped code point(s) does not auto
 
 You'll notice that no elements past the first start or end on byte boundaries, meaning in order to load an element, a fair bit of bitwise operations are required (bit shifting, etc). This makes array accesses more expensive, but that isn't necessarily a big deal for our use case, since we only ever access the array of values once per named character reference, and only after we're certain we have a match. So, tightly bitpacking the value array is a viable way to save some extra bytes for our purposes.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: This is just context for the next section where I'll mention data sizes for versions that use the "regular array" representation or the "tightly bitpacked array" representation for the values.
 
-</aside></p>
+</aside>
 
 ### Data size
 
@@ -1032,11 +1032,11 @@ Ultimately, the data size of the trie is going to be at least **2x larger** than
 
 Luckily, there's [an existing HTML parser implementation written in Zig called `rem`](https://github.com/chadwain/rem) that uses a trie for its named character reference tokenization, so getting [some relevant benchmark results from actual HTML parsing](https://github.com/chadwain/rem/pull/15) for a trie vs DAFSA comparison was pretty easy.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: The trie in `rem` uses the 'flattened' representation of a trie, with a value array that re-uses the index of the end-of-word node (so there are a lot of empty slots in the value array).
 
-</aside></p>
+</aside>
 
 From [my benchmarking](https://gist.github.com/squeek502/07b7dee1086f6e9dc38c4a880addfeca), it turns out that the DAFSA implementation uses more instructions than the trie implementation because it needs to do extra work to build up the unique index during iteration, but the DAFSA saves on cache misses (presumably due to the smaller overall size of the DAFSA and its node re-use) and everything just about evens out in terms of wall clock time:
 
@@ -1061,7 +1061,7 @@ Benchmark 2 (451 runs): ./dafsa
   branch_misses       331K  ±  730       330K  …  337K          21 ( 5%)        💩+  2.9% ±  0.0%
 ```
 
-<p><aside class="note">
+<aside class="note">
 
 Note: Bitpacking the value array of the trie doesn't seem to affect the overall performance, and we see the same sort of pattern: more instructions (due to the added bit shifting during value lookup), but fewer cache misses.
 
@@ -1091,7 +1091,7 @@ Benchmark 2 (231 runs): ./trie-bitpacked-values
 
 </details>
 
-</aside></p>
+</aside>
 
 ### Takeaways
 
@@ -1221,11 +1221,11 @@ Before we get to the actual comparisons, there's (unfortunately) a lot that has 
 
 First, you'll notice from the Ladybird benchmarks above that an *8x improvement* in a very named-character-reference-specific benchmark only led to a *1.23x improvement* in the average case. This points to the fact that named character reference matching is not something that HTML tokenizers typically do very often, and that named character reference matching being *fast enough* is likely just fine, all things considered.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: I realize that this makes this whole endeavor rather pointless, but hopefully it's still interesting enough without the possibility of making a huge performance impact.
 
-</aside></p>
+</aside>
 
 Second, instead of going the route of putting my DAFSA implementation into the other browsers' engines to compare, I went with taking the other browsers' implementations and putting them into Ladybird. Not only that, though, I also made the Firefox/Chrome/Safari implementations conform to the API of `NamedCharacterReferenceMatcher` (for reasons that will be discussed soon). So, in order for my benchmarking to be accurate you'll have to trust that:
 
@@ -1273,11 +1273,11 @@ Well, this explanation&mdash;that the code I didn't change got faster&mdash;is a
 
 However, while I was aware of this possible confounder, up until now I have basically ignored it whenever doing benchmarking (and I'm assuming that's true for most programmers). This is the first time I've come face-to-face with the problem and *had* to reckon with its effects, and I think a large part of that is because I'm dealing with a *much* larger codebase than I typically would when benchmarking, so there's a lot of room for inadvertent layout changes to cascade and cause noticeable performance differences.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: Reducing the amount of code that's compiled in order to benchmark the tokenizer is not as easy as one might think, as the HTML tokenizer has a lot of interconnected dependencies (HTML parser, JavaScript library, countless other things), so when benchmarking the HTML tokenizer I'm pulling in all of Ladybird's `LibWeb` which is rather large.
 
-</aside></p>
+</aside>
 
 #### Elephant mitigation
 
@@ -1288,11 +1288,11 @@ Unfortunately, the solution presented in the talk ([Stabilizer](https://github.c
 
 This introduces some dynamic dispatch overhead into the mix which may muddy the results slightly, but, in theory, this should eliminate the effects of layout differences, as whatever the binary layout happens to be, all implementations will share it. In practice, this did indeed work, but introduced another unexplained anomaly that we'll deal with afterwards. After moving all the implementations into the same binary, I got these results for the 'average case' benchmark:
 
-<p><aside class="note">
+<aside class="note">
 
 Note: Remember that we're expecting this benchmark to show no meaningful difference across the board, as it mostly tests code that hasn't been changed (i.e. named character reference matching has little effect on this benchmark, as mentioned earlier).
 
-</aside></p>
+</aside>
 
 ```poopresults
 Benchmark 1 (12 runs): ./BenchHTMLTokenizerFiles dafsa
@@ -1326,11 +1326,11 @@ Benchmark 4 (12 runs): ./BenchHTMLTokenizerFiles gecko
 
 The remaining Gecko (Firefox) `wall_time` difference is consistently reproducible, but not readily explainable using the other metrics measured, as there is no significant difference in CPU cycles, instructions, cache usage, etc. After attempting some profiling and trying to use `strace` to understand the difference, my guess is that this comes down to coincidental allocation patterns being friendlier when choosing the Gecko version.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: There is no heap allocation in any of the named character reference matching implementations, but the size of each `NamedCharacterReferenceMatcher` subclass is different (the Gecko version is 32 bytes while the others are either 16 or 48 bytes), and an instance of the chosen subclass *is* heap allocated at the start of the program.
 
-</aside></p>
+</aside>
 
 If we use `strace -e %memory -c`, the `dafsa` and `blink` versions consistently use more `brk`/`mmap`/`munmap` syscalls (especially `brk`):
 
@@ -1404,7 +1404,7 @@ Benchmark 3 (12 runs): ./BenchHTMLTokenizerFiles gecko
 
 No meaningful differences across the board, which is what we expect. What this (tentatively) means is that heap allocation is another potential confounder, and that something as inconsequential as a single allocation being a different size (in our case the `NamedCharacterReferenceMatcher` instance) may have knock-on effects that last for the rest of the program (or I'm wrong about the cause and this is a red herring).
 
-<p><aside class="note">
+<aside class="note">
 
 Note: I also wrote [a version of the same benchmark](https://github.com/squeek502/ladybird/blob/all-in-one/Tests/LibWeb/BenchHTMLTokenizerFilesBumpAlloc.cpp) using a (very simple and janky) bump allocator and that, too, got rid of the difference (even when the `NamedCharacterReferenceMatcher` implementations have different sizes).
 
@@ -1445,7 +1445,7 @@ Benchmark 3 (12 runs): ./BenchHTMLTokenizerFilesBumpAlloc gecko
 
 </details>
 
-</aside></p>
+</aside>
 
 Consequently, this means that I won't bother with the 'average case' benchmarking moving forward. In other words, spoiler alert: nothing in this article will move the needle on this 'average case' benchmark.
 
@@ -1458,11 +1458,11 @@ Something worth mentioning here is that I've made the choice to convert the Fire
 
 I'm mentioning this now because it means that I've introduced another possible source of error into my benchmarks; the Firefox/Chrome/Safari implementations that I'm testing are *not* 1:1 ports, as they had to be transformed to conform to the `NamedCharacterReferenceMatcher` API (Firefox much more than Chrome/Safari).
 
-<p><aside class="note">
+<aside class="note">
 
 My converted implementations that I'll be using for benchmarking are available in [this branch](https://github.com/squeek502/ladybird/tree/all-in-one).
 
-</aside></p>
+</aside>
 
 ### Lessons learned
 
@@ -1483,21 +1483,21 @@ With all that out of the way, let's get into it.
 
 The current implementation of named character reference tokenization in the Gecko engine (Firefox's browser engine) [was introduced in 2010](https://github.com/validator/htmlparser/commit/531dbda0a10b6b7c55cb1f054777c8c5e6f61fec), and refined during the rest of 2010. It has [remained unchanged since then](https://github.com/validator/htmlparser/commits/master/translator-src/nu/validator/htmlparser/generator/GenerateNamedCharactersCpp.java).
 
-<p><aside class="note">
+<aside class="note">
 
 Note: Firefox's HTML tokenizer is actually [written in Java](https://github.com/validator/htmlparser) which is then [translated to C++](https://github.com/mozilla-firefox/firefox/tree/main/parser/html/java)
 
-</aside></p>
+</aside>
 
 It does not use any form of a trie, but instead uses a number of arrays (48 in total) to progressively narrow down the possible candidates within the set of named character references until there's no more possible candidates remaining. Here's an overview:
 
 - The first character is checked to ensure that it is within the `a-z` or `A-Z` range and the first character is saved [[src](https://github.com/mozilla-firefox/firefox/blob/1f3f57e2c0f0f0a8cfaf532c9b63f722135e83b8/parser/html/nsHtml5Tokenizer.cpp#L2036-L2039)]
 
-<p><aside class="note">
+<aside class="note">
 
 Note: This is one property of all named character references that the Firefox implementation takes advantage of: *all* named character references start with a character within the `a-z` or `A-Z` range&mdash;no exceptions.
 
-</aside></p>
+</aside>
 
 - The second character is then used as an index into a `HILO_ACCEL` array in order to get the 'row' to use for the first character (there are 44 possible rows; the second character is also always within `a-z` and `A-Z`, but there happens to be 8 missing characters from the `A-Z` range) [[src](https://github.com/mozilla-firefox/firefox/blob/1f3f57e2c0f0f0a8cfaf532c9b63f722135e83b8/parser/html/nsHtml5Tokenizer.cpp#L2072-L2073)]
 - If a valid row exists, the first character is then transformed into an index between `0` and `51` (inclusive) and that is used as an index into the 'row' that was retrieved from the second character [[src](https://github.com/mozilla-firefox/firefox/blob/1f3f57e2c0f0f0a8cfaf532c9b63f722135e83b8/parser/html/nsHtml5Tokenizer.cpp#L2074-L2076)]
@@ -2469,11 +2469,11 @@ This approach works well because the first two characters alone fairly reliably 
 
 </div>
 
-<p><aside class="note">
+<aside class="note">
 
 Note: There are 2 first-two-character-combinations that lead to 55 possible matches: `No` and `su`.
 
-</aside></p>
+</aside>
 
 Now that we have an understanding of how the Firefox implementation works, let's see how it compares using the three metrics that were mentioned at the start.
 
@@ -2624,7 +2624,7 @@ As noted earlier, Firefox uses a total of 48 arrays for its named character refe
 - `NAMES` is an array of 2,231 32-bit structs, so that's 8,924 bytes
 - `VALUES` is also an array of 2,231 32-bit structs, so that's 8,924 bytes
 
-<p><aside class="note">
+<aside class="note">
 
 Note: The `VALUES` array does something pretty clever. As mentioned earlier, the largest mapped first code point requires 17 bits to encode, and the largest second code point is `U+FE00` so that needs 16 bits to encode. Therefore, to encode both code points directly you'd need at minimum 33 bits.
 
@@ -2632,15 +2632,15 @@ However, all mappings that have a first code point with a value &gt; the `u16` m
 
 (this is not an improvement over how I store this data, but I thought it was still worth noting)
 
-</aside></p>
+</aside>
 
 So, in total, the Firefox implementation uses 40,167 bytes (<span class="token_semigood">39.23 KiB</span>) for its named character reference data, while Ladybird uses 24,412 bytes (<span class="token_addition">23.84 KiB</span>). That's a difference of 15,755 bytes (<span class="token_error">15.39 KiB</span>), or, in other words, the Ladybird implementation uses <span class="token_addition">60.8%</span> of the data size of the Firefox implementation.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: As mentioned previously, an additional 3,067 bytes (2.99 KiB) could be saved if the values array in the Ladybird implementation was bitpacked.
 
-</aside></p>
+</aside>
 
 #### Ease-of-use
 
@@ -2667,13 +2667,13 @@ Overall, the Firefox implementation fares quite well in this comparison.
 
 [Blink](https://www.chromium.org/blink/) (the browser engine of Chrome/Chromium) started as a fork of [WebKit](https://webkit.org/) (the browser engine of Safari), which itself started as a fork of [KHTML](https://en.wikipedia.org/wiki/KHTML). There are some differences that have emerged between the two since Blink was forked from WebKit, but for the purposes of this article I'm only going to benchmark against the Blink implementation and assume the results would be roughly the same for the WebKit implementation (the difference mostly comes down to data size, which I'll mention in the "*Data size*" section later).
 
-<p><aside class="note">
+<aside class="note">
 
 Note: I'll double check that the Safari implementation has the same performance characteristics and update this article with my findings once I do.
 
-</aside></p>
+</aside>
 
-<p><aside class="update">
+<aside class="update">
 
 Update: My testing confirms that Safari has roughly the same performance characteristics as Chrome.
 
@@ -2787,7 +2787,7 @@ Benchmark 2 (32 runs): ./BenchMatcher webkit
 
 </details>
 
-</aside></p>
+</aside>
 
 Like Firefox, the Chrome/Safari named character reference tokenization does not use a trie. For the 'matching' portion, the Chrome/Safari implementation is actually quite similar in concept to the Firefox implementation:
 
@@ -2930,11 +2930,11 @@ The Safari implementation uses the same four arrays, but [has made a few more da
 - `kStaticEntityStringStorage` does not include semicolons, and instead that information was moved to a boolean flag within the elements of the `kStaticEntityTable` array. This brings down the total bytes used by this array to 11,127 (-3,358 compared to the Chrome version)
 - The `HTMLEntityTableEntry` struct (used in the `kStaticEntityTable` array) was converted to [use a bitfield](https://github.com/WebKit/WebKit/blob/bde3bff51de25b231de2b22517438a911e2e8e3a/Source/WebCore/html/parser/HTMLEntityTable.h#L34-L43) to reduce the size of the struct from 12 bytes to 8 bytes (57 bits). However, Clang seems to insert padding bits into the `struct` which brings it back up to 12 bytes anyway (it wants to align the `optionalSecondCharacter` and `nameLengthExcludingSemicolon` fields). So, this data size optimization may or may not actually have an effect (I'm not very familiar with the rules around C++ bitfield padding, so I feel like I can't say anything definitive). If the size *is* reduced to 8 bytes, then `kStaticEntityTable` uses 8,924 less bytes (17,798 instead of 26,722).
 
-<p><aside class="update">
+<aside class="update">
 
 Update: Confirmed that Safari's `HTMLEntityTableEntry` is 12 bytes wide instead of the intended 8 bytes. The bug has been reported [here](https://bugs.webkit.org/show_bug.cgi?id=295171).
 
-</aside></p>
+</aside>
 
 So, the Safari implementation uses either 30,040 bytes (<span class="token_addition">29.34 KiB</span>) if `HTMLEntityTableEntry` uses 12 bytes, or 21,116 bytes (<span class="token_addition">20.62 KiB</span>) if `HTMLEntityTableEntry` uses 8 bytes. This means that Safari's data size optimizations (or at least their intended effect) makes its data size *smaller* than Ladybird's (even if the Ladybird implementation tightly bitpacked its values array, it'd still use 229 bytes more than the 8-byte-`HTMLEntityTableEntry` Safari version). This also shows that the larger data size of the Chrome implementation is not inherent to the approach that it uses.
 
@@ -2973,13 +2973,13 @@ Instead, it uses the "lookahead (but never beyond an insertion point) until we'r
 - Try to match a full named character reference
 - If you run out of characters because you hit the end of an insertion point while matching, backtrack and try again on the next tokenizer iteration (always starting the lookahead from just after the ampersand, i.e. no state is saved between attempts)
 
-<p><aside class="note">
+<aside class="note">
 
 Note: It's only possible to 'run out of characters while matching' when there is an active insertion point. If there isn't one (the common case), then this difference in strategy doesn't matter since 'backtrack and try again' will never come into play.
 
 Note also that this strategy doesn't inherently require any particular implementation for the 'try to match a full named character reference' part; a trie, or a DAFSA, or Firefox's `HILO_ACCEL` implementation, or any other approach could be slotted in there with no change in functionality.
 
-</aside></p>
+</aside>
 
 The downside of the Chrome implementation in particular is actually a choice that was made that's not inherent to the overall approach: they don't preserve any matching state between tokenizer iterations and always backtrack to the `&` before trying to match again. For example, when matching against something like `&notin;` that's being written one-character-at-a-time (via `document.write`), the matching algorithm described in the "*[Comparison with Blink/WebKit (Chrome/Safari)](#comparison-with-blink-webkit-chrome-safari)*" section will be executed for each of:
 
@@ -3167,11 +3167,11 @@ This also explains a few things that I glossed over or deferred until later thro
 
 Something else that I've failed to mention until now regards exactly how backtracking is performed.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: This tangent on backtracking is not really related to anything else; I'm only mentioning it now because I had nowhere else to put it.
 
-</aside></p>
+</aside>
 
 In Ladybird, backtracking is very straightforward: modify the input cursor's position by subtracting `N` from the current position (where `N` is the number of overconsumed code points). This is safe to do from a code point boundary perspective because the input is always UTF-8 encoded, and named character reference matching will only ever consume ASCII characters, so going back `N` bytes is guaranteed to be equivalent to going back `N` code points.
 
@@ -3183,11 +3183,11 @@ As of now, I'm unsure if the way that Firefox/Chrome/Safari do it is *necessary*
 
 As of the writing of this article, the DAFSA implementation that's been described so far is exactly what's in Ladybird. During the process of writing this, though, I came up with some ideas (largely inspired by the Firefox/Chrome/Safari implementations) to improve my implementation by utilizing every last possible bit I could get my hands on. This came in the form of two independent optimizations, with one of them just so happening to *barely* make the other possible.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: The code examples in this section will be using [Zig](https://www.ziglang.org/) syntax. 
 
-</aside></p>
+</aside>
 
 ### 'First layer' acceleration
 
@@ -3256,11 +3256,11 @@ The second improvement is a theoretical one for now: what if we could take the t
 
 For the first point, this is actually already the case&mdash;all lists of children *are* sorted (note: I'm unsure if this is a coincidental artifact of how I'm constructing my DAFSA, or if it's a common property of a DAFSA generally). For the second point, we could remove the `last_sibling` flag and replace it with a `children_len` field. For the third, we already have a model available for this with the lookup table approach we used for the first layer: we could just store an accumulated `number` in each `Node` struct instead of a per-node number.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: This is feasible because building the unique index does not actually rely on iterating over each node, we only need to know the cumulative result of the preceding siblings' `number` fields and the `end_of_word` flag of the matching node.
 
-</aside></p>
+</aside>
 
 #### The problem
 
@@ -3696,11 +3696,11 @@ const Node = packed struct(u32) {
 };
 ```
 
-<p><aside class="note">
+<aside class="note">
 
 Note: This approach actually uses the exact same amount of data to store everything, all things told. The `@sizeOf(FirstLayerNode)` is 4 bytes, which is the same as the `@sizeOf(Node)`, so moving the first layer of nodes out of the DAFSA means that the total data size stays the same (`52 * 4` bytes removed from the DAFSA array, `52 * 4` bytes added for the first layer lookup table).
 
-</aside></p>
+</aside>
 
 With this, we can accelerate the search time for the first character drastically, and make it possible to use a binary search for all the rest of the searches we perform. In terms of raw matching speed, this provides another decent improvement over the first layer lookup table alone:
 
@@ -3732,7 +3732,7 @@ Benchmark 3 (83 runs): ./bench-first-layer-accel-binary-search-u7-char-u8-number
   branch_misses      4.92M  ± 18.7K     4.89M  … 5.00M          15 (18%)        ⚡- 13.6% ±  0.1%
 ```
 
-<p><aside class="note">
+<aside class="note">
 
 These benchmarks were run using a version of the DAFSA written in Zig and the code for each is available here:
 
@@ -3740,15 +3740,15 @@ These benchmarks were run using a version of the DAFSA written in Zig and the co
 - [bench-first-layer-accel](https://github.com/squeek502/named-character-references/tree/1d109635043f4f9faa365798cec8cc783a692a9a)
 - [bench-first-layer-accel-binary-search-u7-char-u8-number](https://github.com/squeek502/named-character-references/tree/d9ae6d6741bdb97609432f039ce1558604827b5a)
 
-</aside></p>
+</aside>
 
 Taken together (the Benchmark 3 results), these two optimizations make raw matching speed about 1.9x faster than it was originally.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: We can't easily check how much the 'binary search' optimization on its own would improve the matching speed, since the 'first layer acceleration' optimization was required to allow fitting all the necessary information into the 32-bit nodes.
 
-</aside></p>
+</aside>
 
 As mentioned, though, these raw matching speed improvements don't translate to nearly the same improvement when benchmarking this [new implementation within the Ladybird tokenizer](https://github.com/squeek502/ladybird/tree/dafsa-binary-search) (note also that these benchmarks don't use the 'lookahead when outside of an insertion point' optimization).
 
@@ -4030,13 +4030,13 @@ Benchmark 2 (201 runs): ./bench-two-layer-accel-linear-search
 
 So, for 8 KiB more data you can get another decent performance improvement, but so far I've only implemented this version in Zig so I can't report more information on this yet (would need to port it to C++ to test it with Ladybird). This also represents my first attempt at this 'two layer acceleration' strategy, so it's possible there's more juice to squeeze here.
 
-<p><aside class="note">
+<aside class="note">
 
 Note: I've put this here instead of the ["*Further improvements ...*"](#further-improvements-to-the-dafsa-implementation) section because this doesn't feel like the final form of this idea, and I still kinda like saving that extra 8 KiB of data.
 
 Also, I've already taken way too long in writing this article, so I'm not letting myself pull on this thread anymore right now.
 
-</aside></p>
+</aside>
 
 ### SIMD
 
@@ -4086,11 +4086,11 @@ for (&StructOfArrays.foos) |foo| {
 
 it will be able to benefit from each element being contiguous in memory and from the fact that more elements of the array will fit into cache at a time.
 
-<p><aside class="note">
+<aside class="note">
 
 For more details, see [this talk](https://vimeo.com/649009599)
 
-</aside></p>
+</aside>
 
 </details>
 
