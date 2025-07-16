@@ -15,6 +15,11 @@
 	<link rel="canonical" href="{{{site.url}}}{{{page.url}}}" />
 
 	<link rel="stylesheet" href="/styles/style.css" type="text/css" />
+	{{#page.css}}
+	<style type="text/css">
+{{{page.css}}}
+	</style>
+	{{/page.css}}
 
 	<link href="/atom.xml" type="application/atom+xml" rel="alternate" title="ATOM Feed" />
 </head>

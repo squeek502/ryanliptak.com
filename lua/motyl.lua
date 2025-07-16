@@ -97,6 +97,9 @@ local function render(directory)
         local path = file:match "(.*)%.[^.]+$"
         data.page = loadLua(directory .. "/" .. path .. ".lua")
         local html = extension == "md" and loadMD(directory .. "/" .. file) or readFile(directory .. "/" .. file)
+        if fsutil.exists(directory .. "/" .. path .. ".css") then
+          data.page.css = readFile(directory .. "/" .. path .. ".css")
+        end
         data.page.content = lustache:render(html, data)
         if data.page.url == nil then
           data.page.url = path .. "/"
