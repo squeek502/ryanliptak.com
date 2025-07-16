@@ -1,0 +1,11 @@
+.nul-char {
+	color: #666666;
+	border: 1px dotted black;
+	padding: 1px 2px;
+	margin: 0 2px;
+}
+@media (prefers-color-scheme: dark) {
+  .nul-char {
+    border-color: #999;
+  }
+}
