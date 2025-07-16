@@ -5,4 +5,5 @@ return {
   keywords = "zig, win32, fuzzing",
   categories = {"Programming", "Fuzzing"},
   featured = true,
+  summaryOnly = true,
 }
