@@ -141,10 +141,10 @@ In this loop, `ClipVelocity` basically serves to redistribute changes in velocit
 		</ul>
 		<div class="gravity-controls">
 			<label for="gravity">Gravity (per loop):</label>
-			<input type="text" value="25" name="gravity" size="4" />
+			<input type="text" value="25" name="gravity" id="gravity" size="4" />
 		</div>
 	</div>
-	<i class="caption">Note that with gravity <= 25, velocity's magnitude only changes in the 'Apply Gravity' phase</i>
+	<i class="caption">Note that with gravity &lt;= 25, velocity's magnitude only changes in the 'Apply Gravity' phase</i>
 </div>
 
 So, if you are rampsliding on a constant slope, *all speed loss is typically due to gravity*. If you set gravity to 0, you can rampslide infinitely, and if you set gravity really high, you can only rampslide for a second or two. This makes sense if you think of rampsliding in terms of an object sliding up a completely frictionless slope: the force that will make that object eventually stop and start sliding back down the slope is gravity.
