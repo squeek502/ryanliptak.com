@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
 	<title><![CDATA[{{{site.name}}}]]></title>
+	{{#site.description}}
 	<subtitle><![CDATA[{{{site.description}}}]]></subtitle>
+	{{/site.description}}
 
 	<link href="{{{site.url}}}atom.xml" rel="self"/>
 	<link href="{{{site.url}}}"/>
@@ -22,10 +24,12 @@
 		<id>{{{site.url}}}{{{url}}}</id>
 		<published>{{datetime}}</published>
 		<updated>{{datetime}}</updated>
-		<content type="html"><![CDATA[{{{content}}}]]></content>
-		<summary type="html">
-			<![CDATA[{{description}}]]>
-		</summary>
+		{{#feedContent}}
+		<content type="html"><![CDATA[{{{feedContent}}}]]></content>
+		{{/feedContent}}
+		{{#description}}
+		<summary type="html"><![CDATA[{{description}}]]></summary>
+		{{/description}}
 
 		{{#categoryDisplay}}
 		<category term="{{category}}" scheme="{{{site.url}}}{{{url}}}"/>

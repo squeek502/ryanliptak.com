@@ -2,7 +2,7 @@ return {
   lang = "en",
   title = "",
   name = "ryanliptak.com",
-  description = "",
+  description = nil,
   keywords = "",
   author = "Ryan Liptak",
   url = "https://www.ryanliptak.com/",

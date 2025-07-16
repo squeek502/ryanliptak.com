@@ -134,6 +134,10 @@ local function render(directory)
           if data.page.featured then
             table.insert(data.site.featured, data.page)
           end
+
+          if not data.page.summaryOnly then
+            data.page.feedContent = data.page.content
+          end
         end
 
         fsutil.mkdir("public/" .. data.page.url)
