@@ -1796,8 +1796,6 @@ I'm not sure why this is allowed, and I also don't have an explanation for why a
 
 will get compiled into exactly the same data as above (with only a space and a newline between `foo` and `bar`).
 
-</aside>
-
 But, this on its own is only a minor nuisance from the perspective of implementing a resource compiler&mdash;it is undocumented behavior, but it's pretty easy to account for. The real problems start when someone actually uses `\` as intended.
 
 #### The collapse of whitespace is imminent
@@ -1974,7 +1972,7 @@ Since we know the preprocessor sees `BLAH` as an identifier and we've done `#def
 
 which would now be parsed by the compiler as:
 
-<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">string<i></i></span><span class="subject"><span class="token_string">"\"""</span></span></span><span class="annotation"><span class="desc">identifier<i></i></span><span class="subject"><span class="token_identifier">hello</span></span></span><span class="annotation"><span class="desc">string<i></i></span><span class="subject"><span class="token_string">""</span></span></span></span></span></span></code></pre>
+<pre class="annotated-code"><code class="language-c" style="white-space: inherit;"><span class="annotation"><span class="desc">string<i></i></span><span class="subject"><span class="token_string">"\"""</span></span></span><span class="annotation"><span class="desc">identifier<i></i></span><span class="subject"><span class="token_identifier">hello</span></span></span><span class="annotation"><span class="desc">string<i></i></span><span class="subject"><span class="token_string">""</span></span></span></code></pre>
 
 and lead to a compile error:
 
@@ -2997,8 +2995,6 @@ When this happens, the Windows RC compiler seemingly enters into an infinite loo
 
 </div>
 
-<div>
-
 <div class="bug-quirk-box">
 <span class="bug-quirk-category">miscompilation</span>
 
@@ -3129,16 +3125,16 @@ Typically, a bitmap with a shorter-than-expected color table is considered inval
     <code class="language-none"><span style="background: rgba(255,0,0,.1);">..BITMAPFILEHEADER..</span>
 <span style="background: rgba(0,0,255,.1);">..BITMAPINFOHEADER..</span>
 <span style="background: rgba(0,0,255,.1);">....................</span>
-<div style="outline: 2px dashed rgba(150,0,255,.75);"><span style="background: rgba(150,0,255,.1);">....pixel data......</span>
-<span style="background: rgba(150,0,255,.1);">....................</span></div><span style="background: rgba(150,0,255,.1);">....................</span></code>
+<span style="display: block; outline: 2px dashed rgba(150,0,255,.75);"><span style="background: rgba(150,0,255,.1);">....pixel data......</span>
+<span style="background: rgba(150,0,255,.1);">....................</span></span><span style="background: rgba(150,0,255,.1);">....................</span></code>
   </pre>
 </div>
 <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
   <pre style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex-grow: 1; margin-top: 0;">
     <code class="language-none"><span style="background: rgba(0,0,255,.1);">..BITMAPINFOHEADER..</span>
 <span style="background: rgba(0,0,255,.1);">....................</span>
-<div style="outline: 2px dashed rgba(150,0,255,.75);"><span style="background: rgba(0,255,0,.1);">..."color table"....</span>
-<span style="background: rgba(0,255,0,.1);">....................</span></div><span style="background: rgba(150,0,255,.1);">....pixel data......</span>
+<span style="display: block; outline: 2px dashed rgba(150,0,255,.75);"><span style="background: rgba(0,255,0,.1);">..."color table"....</span>
+<span style="background: rgba(0,255,0,.1);">....................</span></span><span style="background: rgba(150,0,255,.1);">....pixel data......</span>
 <span style="background: rgba(150,0,255,.1);">....................</span>
 <span style="background: rgba(150,0,255,.1);">....................</span></code>
   </pre>
@@ -4194,7 +4190,7 @@ Note: See ["*Undocumented resource types*"](#dlginclude) for details on the `DLG
 
 Certain strings, when used with the `DLGINCLUDE` resource, will cause a seemingly entirely disconnected error. Here's one example (truncated, the full reproduction is just a longer sequence of random characters/escapes):
 
-<pre><code class="language-rc"><span class="token_identifier">1</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_keyword">DLGINCLUDE</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_string">"\06f\x2\x2b\445q\105[ð\134\x90<span class="token_unrepresentable" title="about 230 more characters/escape sequences not shown"><...truncated...></span>"</span><span class="token_rc_whitespace token_whitespace">
+<pre><code class="language-rc"><span class="token_identifier">1</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_keyword">DLGINCLUDE</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_string">"\06f\x2\x2b\445q\105[ð\134\x90<span class="token_unrepresentable" title="about 230 more characters/escape sequences not shown">&lt;...truncated...&gt;</span>"</span><span class="token_rc_whitespace token_whitespace">
 </span></code></pre>
 
 If we try to compile this, we get this error:
@@ -5014,11 +5010,8 @@ Note: In the following example, the string contains the codepoints in this order
 <div class="short-rc-and-result">
   
   <div style="text-align: center; display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
-
-```rc style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"
-1 RCDATA { "ऀ਀਍ഀ " }
-```
-
+    <pre style="display: flex; flex-direction: column; flex-grow: 1; margin-top: 0; justify-content: center;"><code class="language-rc"><span class="token_identifier">1</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_keyword">RCDATA</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_punctuation">{</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_string">&#x0900;&#x0A00;&#x0A0D;&#x0D00;&#x2000;"</span><span class="token_rc_whitespace token_whitespace"> </span><span class="token_punctuation">}</span><span class="token_rc_whitespace token_whitespace">
+    </span></code></pre>
   </div>
 
   <div style="display: flex; flex-direction: column; flex-basis: 100%; flex: 1;">
