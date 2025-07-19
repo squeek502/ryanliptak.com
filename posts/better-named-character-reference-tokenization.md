@@ -3716,6 +3716,14 @@ Also, I've already taken way too long in writing this article, so I'm not lettin
 
 </aside>
 
+<aside class="update">
+
+Update: I was correct in thinking this was not the final form of this idea. I've since found a way to get almost all of the benefit of the "first two layer accleration" approach while reducing the overall amount of data used by 318 bytes (as compared to the original/unmodified DAFSA implementation).
+
+You can read about the details in [the README for the Zig implementation](https://github.com/squeek502/named-character-references) or this [follow-up pull request for the Ladybird browser](https://github.com/LadybirdBrowser/ladybird/pull/5393).
+
+</aside>
+
 ### SIMD
 
 [Single instruction, multiple data (SIMD)](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) is something I have had very little experience with using up to this point, and [my naive attempts at using SIMD to accelerate my DAFSA implementation](https://github.com/squeek502/named-character-references/commit/040d3e104941344dc97d7e2d2179d49650de6120) were not fruitful. However, it seems like there's potential to take advantage of SIMD for this type of problem (if not with a DAFSA, then with some totally different approach that takes better advantage of what SIMD is good at).
@@ -3796,3 +3804,14 @@ Finally, I'll leave you with some links:
 
 - [Repository for the Zig implementation of my named character reference data structure](https://github.com/squeek502/named-character-references/)
 - [Branch of my Ladybird fork that I used for benchmarking the different implementations](https://github.com/squeek502/ladybird/tree/all-in-one)
+
+<aside class="update">
+
+Update: Some links to stuff that happened after this article was written:
+
+- WebKit Bugzilla: [Padding bits defeat intended HTMLEntityTableEntry size optimization](https://bugs.webkit.org/show_bug.cgi?id=295171)
+- Ladybird: [LibWeb/HTML: Use lookahead when possible for named character references](https://github.com/LadybirdBrowser/ladybird/pull/5297)
+- Ladybird: [LibWeb/HTML: Improve data structure of named character reference data](https://github.com/LadybirdBrowser/ladybird/pull/5393)
+- whatwg/html: [Fix description of missing-semicolon-after-character-reference error](https://github.com/whatwg/html/pull/11419)<br>(credit to [this comment on Hacker News](https://news.ycombinator.com/item?id=44400946))
+
+</aside>
