@@ -145,7 +145,7 @@ I've started with this particular quirk because it is actually demonstrative of 
 
 Note: This is the last time I'll be mentioning the behaviors of `windres`/`llvm-rc`/`wrc`, as this simple example is indicative of how much their implementations diverge from `rc.exe` for edge cases. See [win32-samples-rc-tests](https://github.com/squeek502/win32-samples-rc-tests/) for a rough approximation of the (strict) compatibility of the different Windows resource compilers on a more-or-less real-world set of `.rc` files.
 
-From here on out, I'll only be mentioning the behavior of [`resinator`](https://github.com/squeek502/resinator), my resource compiler implementation that was the impetus for the findings in this article.
+Note also that this is not meant as a knock on those projects. As you will see, I've also made the choice to deviate from `rc.exe` behaviors whenever I think it makes sense to. This example is just to illustrate why I decided to reimplement the compiler from scratch rather than inherit the decisions about compatibility made by `windres`/`llvm-rc`/`wrc`. From here on out, though, I'll only be mentioning the behavior of [`resinator`](https://github.com/squeek502/resinator), my resource compiler implementation that was the impetus for the findings in this article.
 
 </aside>
 
