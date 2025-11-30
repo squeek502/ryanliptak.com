@@ -3,7 +3,7 @@ return {
   date = "2024-10-11",
   description = "Fuzz testing decades-old software can turn up some curious behaviors",
   keywords = "zig, win32, fuzzing",
-  categories = {"Programming", "Fuzzing"},
+  categories = {"Programming", "Fuzzing", "Windows"},
   featured = true,
   summaryOnly = true,
 }

@@ -24,5 +24,6 @@ return {
     Programming = "programming",
     Zig = "zig",
     Fuzzing = "fuzzing",
+    Windows = "windows",
   }
 }
