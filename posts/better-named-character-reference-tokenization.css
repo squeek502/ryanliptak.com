@@ -504,15 +504,6 @@ th, td {
   }
 }
 
-.box-border {
-  border: 1px solid #eee;
-}
-@media (prefers-color-scheme: dark) {
-.box-border {
-  border-color: #111;
-}
-}
-
 .caption {
   background-color: rgba(0,0,0, .1);
   margin:0; padding: .25em;

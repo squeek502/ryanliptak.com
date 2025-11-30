@@ -152,6 +152,15 @@ aside.warning {
   border-color: #CCAF77;
 }
 
+.box-border {
+  border: 1px solid #eee;
+}
+@media (prefers-color-scheme: dark) {
+.box-border {
+  border-color: #111;
+}
+}
+
 mark.success { background-color: #ECFFCFFF; }
 mark.failure { background-color: #FFE8DEFF; }
 

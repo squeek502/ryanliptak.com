@@ -207,14 +207,6 @@ pre.annotated-code .desc i::after {
 }
 }
 
-.box-border {
-  border: 1px solid #eee;
-}
-@media (prefers-color-scheme: dark) {
-.box-border {
-  border-color: #111;
-}
-}
 .box-bg {
   background: rgba(100,100,100,0.05);
 }
